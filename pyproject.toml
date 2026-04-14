@@ -102,9 +102,3 @@ indent-style = "space"
 line-ending = "lf"
 skip-magic-trailing-comma = false
 docstring-code-format = true
-
-# =========================
-# Optional: stricter future mode
-# =========================
-[tool.ruff]
-preview = true

@@ -6,10 +6,9 @@ Run from project root: python3 tests/test_vendor_management.py
 """
 
 import sys
-import os
+from pathlib import Path
 
-# Ensure project root is in path
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 PASS = "✓"
 FAIL = "✗"
@@ -47,16 +46,16 @@ except Exception as e:
 section("2. Data Access Layer (DAL)")
 try:
     from integrations.data_warehouse.vendor_db import (
-        search_vendors,
-        get_vendor_by_id,
         find_best_vendors_for_service,
-        get_contract_details,
-        get_sla_compliance,
-        get_milestones,
         get_client_project,
-        save_vendor_selection,
+        get_contract_details,
+        get_milestones,
         get_saved_selections,
+        get_sla_compliance,
+        get_vendor_by_id,
         get_vendor_scorecard,
+        save_vendor_selection,
+        search_vendors,
     )
 
     vendors = search_vendors(service_tag="cloud_hosting")
@@ -126,8 +125,8 @@ section("3. Tool Layer")
 
 try:
     from agents.vendor_management.tools.vendor_search import (
-        VendorSearchTool,
         VendorSearchInput,
+        VendorSearchTool,
     )
 
     t = VendorSearchTool()
@@ -145,8 +144,8 @@ except Exception as e:
 
 try:
     from agents.vendor_management.tools.vendor_matcher import (
-        VendorMatcherTool,
         VendorMatcherInput,
+        VendorMatcherTool,
     )
 
     t = VendorMatcherTool()
@@ -176,8 +175,8 @@ except Exception as e:
 
 try:
     from agents.vendor_management.tools.contract_parser import (
-        ContractParserTool,
         ContractParserInput,
+        ContractParserTool,
     )
 
     t = ContractParserTool()
@@ -195,8 +194,8 @@ except Exception as e:
 
 try:
     from agents.vendor_management.tools.sla_monitor import (
-        SLAMonitorTool,
         SLAMonitorInput,
+        SLAMonitorTool,
     )
 
     t = SLAMonitorTool()
@@ -217,8 +216,8 @@ except Exception as e:
 
 try:
     from agents.vendor_management.tools.milestone_tracker import (
-        MilestoneTrackerTool,
         MilestoneTrackerInput,
+        MilestoneTrackerTool,
     )
 
     t = MilestoneTrackerTool()
@@ -233,8 +232,8 @@ except Exception as e:
 
 try:
     from agents.vendor_management.tools.vendor_scorecard import (
-        VendorScorecardTool,
         VendorScorecardInput,
+        VendorScorecardTool,
     )
 
     t = VendorScorecardTool()
@@ -255,8 +254,8 @@ except Exception as e:
 section("4. LangGraph Nodes (rule-based, no LLM)")
 
 try:
-    from agents.vendor_management.nodes.fetch_vendor import fetch_vendor_node
     from agents.vendor_management.nodes.evaluate import evaluate_node
+    from agents.vendor_management.nodes.fetch_vendor import fetch_vendor_node
     from agents.vendor_management.nodes.risk_detect import risk_detect_node
 
     # Test FIND_BEST fetch

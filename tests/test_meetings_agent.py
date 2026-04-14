@@ -6,9 +6,9 @@ Run: .venv/bin/python3 tests/test_meetings_agent.py
 """
 
 import sys
-import os
+from pathlib import Path
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 PASS, FAIL = "✓", "✗"
 results = []
@@ -39,9 +39,9 @@ section("2. Persons DAL — Disambiguation")
 try:
     from integrations.data_warehouse.meeting_db import (
         find_persons,
+        get_meeting_full,
         get_person_by_email,
         get_person_by_id,
-        get_meeting_full,
     )
 
     all_persons = find_persons()
@@ -92,8 +92,8 @@ section("3. All 11 Tools")
 
 try:
     from agents.communication.tools.briefing_tool import (
-        ParticipantBriefingTool,
         BriefingInput,
+        ParticipantBriefingTool,
     )
 
     t = ParticipantBriefingTool()
@@ -109,13 +109,14 @@ except Exception as e:
     check("ParticipantBriefingTool", False, str(e))
 
 try:
-    from agents.communication.tools.calendar_tools import (
-        GoogleCalendarAvailabilityTool,
-        AvailabilityInput,
-        GoogleCalendarCreateTool,
-        CalendarCreateInput,
-    )
     from datetime import datetime, timedelta
+
+    from agents.communication.tools.calendar_tools import (
+        AvailabilityInput,
+        CalendarCreateInput,
+        GoogleCalendarAvailabilityTool,
+        GoogleCalendarCreateTool,
+    )
 
     now = datetime.utcnow()
     avail = GoogleCalendarAvailabilityTool().execute(
@@ -242,11 +243,12 @@ except Exception as e:
     check("MeetingSummarizerTool", False, str(e))
 
 try:
-    from agents.communication.tools.conflict_resolver_tool import (
-        ConflictResolverTool,
-        ConflictResolverInput,
-    )
     from datetime import datetime, timedelta
+
+    from agents.communication.tools.conflict_resolver_tool import (
+        ConflictResolverInput,
+        ConflictResolverTool,
+    )
 
     now = datetime.utcnow()
     out = ConflictResolverTool().execute(
@@ -268,7 +270,7 @@ except Exception as e:
     check("ConflictResolverTool", False, str(e))
 
 try:
-    from agents.communication.tools.slack_tool import SlackNotifierTool, SlackInput
+    from agents.communication.tools.slack_tool import SlackInput, SlackNotifierTool
 
     out = SlackNotifierTool().execute(
         SlackInput(channel="#engineering", message="Test message", mentions=["@anil"])
@@ -279,8 +281,8 @@ except Exception as e:
 
 try:
     from agents.communication.tools.email_draft_tool import (
-        EmailDraftTool,
         EmailDraftInput,
+        EmailDraftTool,
     )
 
     out = EmailDraftTool().execute(
@@ -299,10 +301,10 @@ section("4. Graph Nodes (no LLM)")
 
 try:
     from agents.communication.nodes.scheduling import (
-        resolve_participants_node,
         fetch_availability_node,
         find_common_slots_node,
         propose_slots_node,
+        resolve_participants_node,
     )
 
     state = {
@@ -347,8 +349,8 @@ except Exception:
 
 try:
     from agents.communication.nodes.summarization import (
-        retrieve_transcript_node,
         extract_key_points_node,
+        retrieve_transcript_node,
     )
 
     state2 = {
