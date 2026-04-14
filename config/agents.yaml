@@ -1,0 +1,93 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# agents.yaml — Declarative agent registry for PilotH
+#
+# loader: config/loader.py reads this file at startup.
+# Each agent entry is validated against the AgentConfig schema.
+# Adding a new agent: copy any block, change name/module/class/tools.
+# ─────────────────────────────────────────────────────────────────────────────
+
+agents:
+
+  # ── Vendor Management ──────────────────────────────────────────────────────
+  - name: vendor_management
+    display_name: "Vendor Management Agent"
+    enabled: true
+    module: agents.vendor_management.agent
+    class: VendorManagementAgent
+    description: >
+      Selects best-fit vendors for client projects, monitors SLAs,
+      parses contracts, tracks milestones, and generates performance scorecards.
+    actions:
+      - find_best
+      - full_assessment
+      - monitor_sla
+      - track_milestones
+      - summarize_contract
+    default_action: full_assessment
+    tools:
+      - vendor_search
+      - vendor_matcher
+      - contract_parser
+      - sla_monitor
+      - milestone_tracker
+      - vendor_scorecard
+    hitl:
+      enabled: true
+      trigger_on: []              # HITL not required for vendor reads
+    llm_required: false           # Has rule-based fallback
+    tags: [procurement, vendor, contracts, sla]
+
+  # ── Meetings & Communication ───────────────────────────────────────────────
+  - name: meetings_communication
+    display_name: "Meetings & Communication Agent"
+    enabled: true
+    module: agents.communication.agent
+    class: MeetingCommunicationAgent
+    description: >
+      Smart meeting scheduler across timezones, generates agendas,
+      pre-meeting briefings, meeting summaries, follow-up emails,
+      conflict resolution, and Slack notifications.
+    actions:
+      - schedule
+      - summarize
+      - brief
+    default_action: schedule
+    tools:
+      - google_calendar_create
+      - google_calendar_availability
+      - timezone_converter
+      - email_draft
+      - participant_briefing
+      - sentiment_analysis
+      - meeting_summarizer
+      - agenda_generator
+      - slack_notifier
+      - action_item_tracker
+      - conflict_resolver
+    hitl:
+      enabled: true
+      trigger_on:
+        - create_event          # Pause if external attendees detected
+    llm_required: false
+    tags: [meetings, calendar, communication, scheduling]
+
+  # ── Template for a new agent (copy this block) ────────────────────────────
+  # - name: finance
+  #   display_name: "Finance Agent"
+  #   enabled: false            # set true when implemented
+  #   module: agents.finance.agent
+  #   class: FinanceAgent
+  #   description: >
+  #     Budget analysis, expense tracking, FX conversion.
+  #   actions:
+  #     - analyze_budget
+  #     - convert_currency
+  #   default_action: analyze_budget
+  #   tools:
+  #     - budget_query
+  #     - currency_converter
+  #   hitl:
+  #     enabled: false
+  #     trigger_on: []
+  #   llm_required: false
+  #   tags: [finance, budget]

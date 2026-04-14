@@ -1,0 +1,117 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# docker-compose.yml — PilotH full stack
+#
+# Services:
+#   piloth-api   — FastAPI application (main service)
+#   ollama       — Local LLM inference server
+#   redis        — Optional: session/HITL persistence upgrade
+#
+# Quick start:
+#   cp config/.env.example .env     # fill in API keys
+#   docker-compose up --build -d
+#   docker-compose logs -f piloth-api
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+
+  # ── PilotH API ──────────────────────────────────────────────────────────────
+  piloth-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    container_name: piloth-api
+    image: piloth:latest
+    restart: unless-stopped
+    ports:
+      - "${PORT:-8000}:8000"
+    env_file:
+      - .env          # Load all secrets from local .env
+    environment:
+      # Override for Docker networking
+      OLLAMA_BASE_URL: "http://ollama:11434"
+      SQLITE_DB_PATH:  "/data/pilot_db.sqlite"
+      PYTHONPATH:      "/app"
+    volumes:
+      - piloth-data:/data          # SQLite persistent volume
+    depends_on:
+      ollama:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout:  10s
+      retries:  3
+      start_period: 20s
+    networks:
+      - piloth-net
+    labels:
+      com.piloth.service: "api"
+      com.piloth.version: "1.0"
+
+  # ── Ollama (local LLM) ──────────────────────────────────────────────────────
+  ollama:
+    image: ollama/ollama:latest
+    container_name: piloth-ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-models:/root/.ollama   # Persist downloaded models
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/version"]
+      interval: 30s
+      timeout:  10s
+      retries:  5
+      start_period: 30s
+    networks:
+      - piloth-net
+    # Pull llama3 model on first boot
+    entrypoint: ["/bin/sh", "-c",
+      "ollama serve & sleep 5 && ollama pull ${OLLAMA_MODEL:-llama3} && wait"]
+    labels:
+      com.piloth.service: "llm"
+
+  # ── Redis (optional — for production HITL + session persistence) ────────────
+  redis:
+    image: redis:7-alpine
+    container_name: piloth-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 15s
+      timeout:   5s
+      retries:   3
+    networks:
+      - piloth-net
+    profiles:
+      - full          # only starts with: docker-compose --profile full up
+    labels:
+      com.piloth.service: "cache"
+
+# ── Volumes ────────────────────────────────────────────────────────────────────
+volumes:
+  piloth-data:
+    driver: local
+    labels:
+      com.piloth.volume: "sqlite-data"
+  ollama-models:
+    driver: local
+    labels:
+      com.piloth.volume: "llm-models"
+  redis-data:
+    driver: local
+    labels:
+      com.piloth.volume: "redis"
+
+# ── Networks ───────────────────────────────────────────────────────────────────
+networks:
+  piloth-net:
+    driver: bridge
+    labels:
+      com.piloth.network: "main"

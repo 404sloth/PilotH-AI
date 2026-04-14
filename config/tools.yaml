@@ -1,0 +1,204 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# tools.yaml — Declarative tool registry for PilotH
+#
+# Describes every tool: which agent owns it, where the class lives,
+# whether it requires LLM or external credentials, and rate limits.
+# ─────────────────────────────────────────────────────────────────────────────
+
+tools:
+
+  # ── Vendor Management Tools ────────────────────────────────────────────────
+
+  - name: vendor_search
+    display_name: "Vendor Search"
+    owner_agent: vendor_management
+    module: agents.vendor_management.tools.vendor_search
+    class: VendorSearchTool
+    description: "Search vendors by service tag, name, country, or tier."
+    requires_llm: false
+    requires_credentials: false
+    rate_limit_per_min: 100
+    tags: [vendor, search, database]
+
+  - name: vendor_matcher
+    display_name: "Vendor Matcher"
+    owner_agent: vendor_management
+    module: agents.vendor_management.tools.vendor_matcher
+    class: VendorMatcherTool
+    description: "Rank vendors by composite fit score for a client project."
+    requires_llm: false
+    requires_credentials: false
+    rate_limit_per_min: 60
+    tags: [vendor, ranking, scoring]
+
+  - name: contract_parser
+    display_name: "Contract Parser"
+    owner_agent: vendor_management
+    module: agents.vendor_management.tools.contract_parser
+    class: ContractParserTool
+    description: "Parse and summarise vendor contract details from the database."
+    requires_llm: false
+    requires_credentials: false
+    rate_limit_per_min: 60
+    tags: [vendor, contracts]
+
+  - name: sla_monitor
+    display_name: "SLA Monitor"
+    owner_agent: vendor_management
+    module: agents.vendor_management.tools.sla_monitor
+    class: SLAMonitorTool
+    description: "Fetch SLA compliance metrics and generate recommendations."
+    requires_llm: false
+    requires_credentials: false
+    rate_limit_per_min: 60
+    tags: [vendor, sla, compliance]
+
+  - name: milestone_tracker
+    display_name: "Milestone Tracker"
+    owner_agent: vendor_management
+    module: agents.vendor_management.tools.milestone_tracker
+    class: MilestoneTrackerTool
+    description: "Track project milestone health and identify delays."
+    requires_llm: false
+    requires_credentials: false
+    rate_limit_per_min: 60
+    tags: [vendor, milestones, projects]
+
+  - name: vendor_scorecard
+    display_name: "Vendor Scorecard"
+    owner_agent: vendor_management
+    module: agents.vendor_management.tools.vendor_scorecard
+    class: VendorScorecardTool
+    description: "Generate a full performance scorecard for a vendor."
+    requires_llm: false
+    requires_credentials: false
+    rate_limit_per_min: 30
+    tags: [vendor, scorecard, analytics]
+
+  # ── Meeting & Communication Tools ─────────────────────────────────────────
+
+  - name: google_calendar_create
+    display_name: "Google Calendar — Create Event"
+    owner_agent: meetings_communication
+    module: agents.communication.tools.calendar_tools
+    class: GoogleCalendarCreateTool
+    description: "Create a Google Calendar event for a list of attendees."
+    requires_llm: false
+    requires_credentials: true
+    credentials_env: [GOOGLE_CALENDAR_CREDENTIALS]
+    production_note: "Set GOOGLE_CALENDAR_CREDENTIALS to service account JSON path."
+    rate_limit_per_min: 30
+    tags: [meetings, calendar, google]
+
+  - name: google_calendar_availability
+    display_name: "Google Calendar — Availability"
+    owner_agent: meetings_communication
+    module: agents.communication.tools.calendar_tools
+    class: GoogleCalendarAvailabilityTool
+    description: "Fetch free/busy calendar blocks for a list of attendees."
+    requires_llm: false
+    requires_credentials: true
+    credentials_env: [GOOGLE_CALENDAR_CREDENTIALS]
+    rate_limit_per_min: 60
+    tags: [meetings, calendar, availability]
+
+  - name: timezone_converter
+    display_name: "Timezone Converter"
+    owner_agent: meetings_communication
+    module: agents.communication.tools.timezone_tool
+    class: TimezoneConverterTool
+    description: "Convert datetimes between IANA timezones with DST support."
+    requires_llm: false
+    requires_credentials: false
+    rate_limit_per_min: 200
+    tags: [meetings, timezone, utility]
+
+  - name: email_draft
+    display_name: "Email Draft Generator"
+    owner_agent: meetings_communication
+    module: agents.communication.tools.email_draft_tool
+    class: EmailDraftTool
+    description: "Draft meeting-related emails (follow-up, invite, summary) using LLM."
+    requires_llm: true
+    requires_credentials: false
+    rate_limit_per_min: 20
+    tags: [meetings, email, llm]
+
+  - name: participant_briefing
+    display_name: "Participant Briefing"
+    owner_agent: meetings_communication
+    module: agents.communication.tools.briefing_tool
+    class: ParticipantBriefingTool
+    description: "Fetch and disambiguate attendee profiles from the company directory."
+    requires_llm: false
+    requires_credentials: false
+    rate_limit_per_min: 60
+    tags: [meetings, people, directory]
+
+  - name: sentiment_analysis
+    display_name: "Sentiment Analysis"
+    owner_agent: meetings_communication
+    module: agents.communication.tools.sentiment_tool
+    class: SentimentAnalysisTool
+    description: "Analyse sentiment and key phrases from text segments."
+    requires_llm: false
+    requires_credentials: false
+    rate_limit_per_min: 100
+    tags: [meetings, sentiment, nlp]
+
+  - name: meeting_summarizer
+    display_name: "Meeting Summarizer"
+    owner_agent: meetings_communication
+    module: agents.communication.tools.summarizer_tool
+    class: MeetingSummarizerTool
+    description: "Extract decisions, action items, and risks from a transcript using LLM."
+    requires_llm: true
+    requires_credentials: false
+    rate_limit_per_min: 20
+    tags: [meetings, summary, llm]
+
+  - name: agenda_generator
+    display_name: "Agenda Generator"
+    owner_agent: meetings_communication
+    module: agents.communication.tools.agenda_tool
+    class: AgendaGeneratorTool
+    description: "Generate a time-boxed agenda from meeting goals and attendee context."
+    requires_llm: true
+    requires_credentials: false
+    rate_limit_per_min: 20
+    tags: [meetings, agenda, llm]
+
+  - name: slack_notifier
+    display_name: "Slack Notifier"
+    owner_agent: meetings_communication
+    module: agents.communication.tools.slack_tool
+    class: SlackNotifierTool
+    description: "Send Slack messages with @mentions. Mock until SLACK_BOT_TOKEN is set."
+    requires_llm: false
+    requires_credentials: true
+    credentials_env: [SLACK_BOT_TOKEN]
+    production_note: "Set SLACK_BOT_TOKEN to enable real Slack messages."
+    rate_limit_per_min: 30
+    tags: [meetings, slack, notifications]
+
+  - name: action_item_tracker
+    display_name: "Action Item Tracker"
+    owner_agent: meetings_communication
+    module: agents.communication.tools.action_tracker_tool
+    class: ActionItemTrackerTool
+    description: "Save meeting action items to DB and generate mock PM task links."
+    requires_llm: false
+    requires_credentials: false
+    rate_limit_per_min: 60
+    tags: [meetings, tasks, project-management]
+
+  - name: conflict_resolver
+    display_name: "Conflict Resolver"
+    owner_agent: meetings_communication
+    module: agents.communication.tools.conflict_resolver_tool
+    class: ConflictResolverTool
+    description: "Detect scheduling conflicts and suggest the next available free slots."
+    requires_llm: false
+    requires_credentials: false
+    rate_limit_per_min: 60
+    tags: [meetings, scheduling, conflicts]

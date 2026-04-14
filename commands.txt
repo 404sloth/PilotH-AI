@@ -1,0 +1,31 @@
+# Tests
+.venv/bin/python3 tests/test_meetings_agent.py
+.venv/bin/python3 tests/test_vendor_management.py
+
+# API server
+.venv/bin/python3 -m uvicorn backend.api.main:app --reload --port 8000
+
+
+
+
+
+
+
+
+
+
+# Seed DB
+.venv/bin/python3 Scripts/seed_data.py --reset
+
+# Validate registry
+.venv/bin/python3 Scripts/register_tools.py --validate
+.venv/bin/python3 Scripts/register_agents.py --validate
+
+# Dev server
+./Scripts/deploy.sh
+
+# Docker
+./Scripts/deploy.sh --docker
+
+# Production
+./Scripts/deploy.sh --prod

@@ -1,0 +1,24 @@
+# Core framework
+langchain>=0.3.0
+langchain-core>=0.3.0
+langgraph>=0.2.0
+
+# LLM providers (install only what you use)
+langchain-openai>=0.2.0
+langchain-groq>=0.2.0
+langchain-ollama>=0.2.0
+
+# Validation
+pydantic>=2.5.0
+pydantic-settings>=2.0.0
+
+# API
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+
+# Observability
+langsmith>=0.1.0
+
+# Utilities
+python-dotenv>=1.0.0
+
