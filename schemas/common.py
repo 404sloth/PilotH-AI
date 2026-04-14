@@ -1,7 +1,8 @@
 """Common shared response schemas."""
+
 from __future__ import annotations
 from datetime import datetime
-from typing import Any, Generic, List, Optional, TypeVar
+from typing import Generic, List, Optional, TypeVar
 from pydantic import BaseModel, Field
 
 T = TypeVar("T")
@@ -19,14 +20,14 @@ class BaseResponse(BaseModel):
 
 class ErrorResponse(BaseModel):
     success: bool = False
-    error:   str
-    detail:  Optional[str] = None
-    code:    Optional[str] = None
+    error: str
+    detail: Optional[str] = None
+    code: Optional[str] = None
 
 
 class PaginatedResponse(BaseModel, Generic[T]):
-    items:       List[T]
-    total:       int
-    page:        int = 1
-    page_size:   int = 20
-    has_more:    bool = False
+    items: List[T]
+    total: int
+    page: int = 1
+    page_size: int = 20
+    has_more: bool = False

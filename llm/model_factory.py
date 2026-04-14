@@ -59,37 +59,46 @@ def _detect_provider() -> str:
 def _build_openai(temperature: float, model: Optional[str]) -> BaseChatModel:
     try:
         from langchain_openai import ChatOpenAI
+
         return ChatOpenAI(
             model=model or os.getenv("OPENAI_MODEL", "gpt-4o"),
             temperature=temperature,
             api_key=os.getenv("OPENAI_API_KEY"),
         )
     except ImportError as e:
-        raise RuntimeError("langchain-openai not installed. Run: pip install langchain-openai") from e
+        raise RuntimeError(
+            "langchain-openai not installed. Run: pip install langchain-openai"
+        ) from e
 
 
 def _build_groq(temperature: float, model: Optional[str]) -> BaseChatModel:
     try:
         from langchain_groq import ChatGroq
+
         return ChatGroq(
             model=model or os.getenv("GROQ_MODEL", "llama-3.1-8b-instant"),
             temperature=temperature,
             api_key=os.getenv("GROQ_API_KEY"),
         )
     except ImportError as e:
-        raise RuntimeError("langchain-groq not installed. Run: pip install langchain-groq") from e
+        raise RuntimeError(
+            "langchain-groq not installed. Run: pip install langchain-groq"
+        ) from e
 
 
 def _build_ollama(temperature: float, model: Optional[str]) -> BaseChatModel:
     try:
         from langchain_ollama import ChatOllama
+
         return ChatOllama(
             model=model or os.getenv("OLLAMA_MODEL", "llama3"),
             temperature=temperature,
             base_url=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434"),
         )
     except ImportError as e:
-        raise RuntimeError("langchain-ollama not installed. Run: pip install langchain-ollama") from e
+        raise RuntimeError(
+            "langchain-ollama not installed. Run: pip install langchain-ollama"
+        ) from e
 
 
 class ModelFactory:
@@ -101,9 +110,9 @@ class ModelFactory:
     @staticmethod
     def get_model(config) -> BaseChatModel:
         prefer = getattr(config, "llm_primary", None)
-        openai_model  = getattr(config, "openai_model", None)
-        groq_model    = getattr(config, "groq_model", None)
-        ollama_model  = getattr(config, "ollama_model", None)
+        openai_model = getattr(config, "openai_model", None)
+        groq_model = getattr(config, "groq_model", None)
+        ollama_model = getattr(config, "ollama_model", None)
 
         if prefer == "openai":
             return get_llm("openai", model_override=openai_model)

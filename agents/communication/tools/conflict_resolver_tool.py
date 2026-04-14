@@ -2,31 +2,31 @@
 
 from __future__ import annotations
 from datetime import datetime, timedelta
-from typing import List, Optional
+from typing import List
 from pydantic import BaseModel, Field
 from tools.base_tool import StructuredTool
 
 
 class ConflictResolverInput(BaseModel):
-    attendee_emails: List[str]     = Field(..., description="All attendee emails")
-    preferred_start: str           = Field(..., description="Preferred start (ISO 8601)")
-    preferred_end:   str           = Field(..., description="Preferred end (ISO 8601)")
-    duration_mins:   int           = Field(60, ge=15, le=480)
-    timezone:        str           = Field("UTC")
-    max_alternatives: int          = Field(3, ge=1, le=10)
+    attendee_emails: List[str] = Field(..., description="All attendee emails")
+    preferred_start: str = Field(..., description="Preferred start (ISO 8601)")
+    preferred_end: str = Field(..., description="Preferred end (ISO 8601)")
+    duration_mins: int = Field(60, ge=15, le=480)
+    timezone: str = Field("UTC")
+    max_alternatives: int = Field(3, ge=1, le=10)
 
 
 class TimeSlot(BaseModel):
-    start:  str
-    end:    str
-    label:  str
+    start: str
+    end: str
+    label: str
 
 
 class ConflictResolverOutput(BaseModel):
-    conflict_detected:   bool
-    conflicting_people:  List[str]
-    alternatives:        List[TimeSlot]
-    message:             str
+    conflict_detected: bool
+    conflicting_people: List[str]
+    alternatives: List[TimeSlot]
+    message: str
 
 
 class ConflictResolverTool(StructuredTool):
@@ -34,6 +34,7 @@ class ConflictResolverTool(StructuredTool):
     Check for scheduling conflicts among attendees and suggest alternative slots.
     Uses availability data from the DB.
     """
+
     name: str = "conflict_resolver"
     description: str = (
         "Detect scheduling conflicts for a proposed meeting time and suggest "
@@ -42,14 +43,19 @@ class ConflictResolverTool(StructuredTool):
     args_schema: type[BaseModel] = ConflictResolverInput
 
     def execute(self, inp: ConflictResolverInput) -> ConflictResolverOutput:
-        from integrations.data_warehouse.meeting_db import get_person_by_email, get_busy_blocks
+        from integrations.data_warehouse.meeting_db import (
+            get_person_by_email,
+            get_busy_blocks,
+        )
 
         conflicting: List[str] = []
         for email in inp.attendee_emails:
             person = get_person_by_email(email)
             if not person:
                 continue
-            blocks = get_busy_blocks(person["id"], inp.preferred_start, inp.preferred_end)
+            blocks = get_busy_blocks(
+                person["id"], inp.preferred_start, inp.preferred_end
+            )
             if blocks:
                 conflicting.append(email)
 
@@ -57,7 +63,9 @@ class ConflictResolverTool(StructuredTool):
         if conflicting:
             # Try slots in next N½-day increments
             try:
-                start_dt = datetime.fromisoformat(inp.preferred_start.replace("Z", "+00:00"))
+                start_dt = datetime.fromisoformat(
+                    inp.preferred_start.replace("Z", "+00:00")
+                )
             except ValueError:
                 start_dt = datetime.utcnow() + timedelta(hours=24)
 
@@ -73,13 +81,21 @@ class ConflictResolverTool(StructuredTool):
                     person = get_person_by_email(email)
                     if not person:
                         continue
-                    blocks = get_busy_blocks(person["id"], candidate.isoformat(), slot_end.isoformat())
+                    blocks = get_busy_blocks(
+                        person["id"], candidate.isoformat(), slot_end.isoformat()
+                    )
                     if blocks:
                         is_free = False
                         break
                 if is_free:
                     label = candidate.strftime("%A, %d %b %Y at %H:%M UTC")
-                    alternatives.append(TimeSlot(start=candidate.isoformat(), end=slot_end.isoformat(), label=label))
+                    alternatives.append(
+                        TimeSlot(
+                            start=candidate.isoformat(),
+                            end=slot_end.isoformat(),
+                            label=label,
+                        )
+                    )
                     if len(alternatives) >= inp.max_alternatives:
                         break
                 candidate += timedelta(hours=4)
@@ -91,7 +107,7 @@ class ConflictResolverTool(StructuredTool):
             message=(
                 f"Conflict detected for: {', '.join(conflicting)}. "
                 f"{len(alternatives)} alternative slot(s) found."
-                if conflicting else
-                "No conflicts detected. Proposed time is available for all attendees."
+                if conflicting
+                else "No conflicts detected. Proposed time is available for all attendees."
             ),
         )

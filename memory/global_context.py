@@ -74,7 +74,10 @@ class GlobalContext:
     def get(self, key: str, default: Any = None) -> Any:
         with get_db_connection() as conn:
             cur = conn.cursor()
-            cur.execute("SELECT value_json, updated_at, ttl_seconds FROM global_context WHERE key=?", (key,))
+            cur.execute(
+                "SELECT value_json, updated_at, ttl_seconds FROM global_context WHERE key=?",
+                (key,),
+            )
             row = cur.fetchone()
             if not row:
                 return default
@@ -94,10 +97,14 @@ class GlobalContext:
     def list_by_agent(self, agent: str) -> Dict[str, Any]:
         with get_db_connection() as conn:
             cur = conn.cursor()
-            cur.execute("SELECT key, value_json FROM global_context WHERE agent=?", (agent,))
+            cur.execute(
+                "SELECT key, value_json FROM global_context WHERE agent=?", (agent,)
+            )
             return {r["key"]: json.loads(r["value_json"]) for r in cur.fetchall()}
 
-    def append_to_list(self, key: str, item: Any, max_items: int = 100, **kwargs) -> None:
+    def append_to_list(
+        self, key: str, item: Any, max_items: int = 100, **kwargs
+    ) -> None:
         """Append an item to a stored list (FIFO, bounded)."""
         existing = self.get(key, [])
         if not isinstance(existing, list):
@@ -116,11 +123,11 @@ class GlobalContext:
     ) -> None:
         """Convenience: append a decision to the shared decision log."""
         entry = {
-            "decision":   decision,
-            "agent":      agent,
+            "decision": decision,
+            "agent": agent,
             "session_id": session_id,
-            "metadata":   metadata or {},
-            "timestamp":  time.time(),
+            "metadata": metadata or {},
+            "timestamp": time.time(),
         }
         self.append_to_list(
             "decision_log",

@@ -10,18 +10,22 @@ logger = logging.getLogger(__name__)
 
 
 class SlackInput(BaseModel):
-    channel:    str          = Field(..., description="Slack channel or user handle (e.g. #general or @james)")
-    message:    str          = Field(..., description="Message text (supports Slack markdown)")
-    mentions:   List[str]   = Field(default_factory=list, description="Slack handles to mention")
-    blocks:     Optional[dict] = None   # Slack Block Kit JSON (optional)
+    channel: str = Field(
+        ..., description="Slack channel or user handle (e.g. #general or @james)"
+    )
+    message: str = Field(..., description="Message text (supports Slack markdown)")
+    mentions: List[str] = Field(
+        default_factory=list, description="Slack handles to mention"
+    )
+    blocks: Optional[dict] = None  # Slack Block Kit JSON (optional)
 
 
 class SlackOutput(BaseModel):
-    sent:      bool
-    channel:   str
-    ts:        Optional[str] = None   # Slack message timestamp
+    sent: bool
+    channel: str
+    ts: Optional[str] = None  # Slack message timestamp
     permalink: Optional[str] = None
-    mock:      bool          = True
+    mock: bool = True
 
 
 class SlackNotifierTool(StructuredTool):
@@ -30,8 +34,11 @@ class SlackNotifierTool(StructuredTool):
     Mock: logs the message and returns success.
     Production: replace _send with real slack_sdk call.
     """
+
     name: str = "slack_notifier"
-    description: str = "Send a Slack message to a channel or user with optional @mentions."
+    description: str = (
+        "Send a Slack message to a channel or user with optional @mentions."
+    )
     args_schema: type[BaseModel] = SlackInput
 
     def execute(self, inp: SlackInput) -> SlackOutput:
@@ -48,4 +55,6 @@ class SlackNotifierTool(StructuredTool):
         # return SlackOutput(sent=True, channel=channel, ts=resp["ts"], mock=False)
 
         logger.info("[SLACK MOCK] → %s: %s", channel, message[:120])
-        return SlackOutput(sent=True, channel=channel, ts=f"mock.{id(message)}", mock=True)
+        return SlackOutput(
+            sent=True, channel=channel, ts=f"mock.{id(message)}", mock=True
+        )

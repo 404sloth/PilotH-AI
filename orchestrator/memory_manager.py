@@ -19,10 +19,11 @@ class MemoryManager:
 
     def __init__(self, session_id: str) -> None:
         self.session_id = session_id
-        from memory.session_store   import get_session_store
-        from memory.global_context  import get_global_context
-        self._session   = get_session_store().get_or_create(session_id)
-        self._global    = get_global_context()
+        from memory.session_store import get_session_store
+        from memory.global_context import get_global_context
+
+        self._session = get_session_store().get_or_create(session_id)
+        self._global = get_global_context()
 
     # ── Session (short-term) ──────────────────────────────────────────────────
 
@@ -49,13 +50,19 @@ class MemoryManager:
         agent: Optional[str] = None,
         ttl_seconds: Optional[float] = None,
     ) -> None:
-        self._global.set(key, value, agent=agent, session_id=self.session_id, ttl_seconds=ttl_seconds)
+        self._global.set(
+            key, value, agent=agent, session_id=self.session_id, ttl_seconds=ttl_seconds
+        )
 
     def get_global(self, key: str, default: Any = None) -> Any:
         return self._global.get(key, default)
 
-    def log_decision(self, decision: str, agent: str, metadata: Optional[Dict] = None) -> None:
-        self._global.log_decision(decision, agent=agent, session_id=self.session_id, metadata=metadata)
+    def log_decision(
+        self, decision: str, agent: str, metadata: Optional[Dict] = None
+    ) -> None:
+        self._global.log_decision(
+            decision, agent=agent, session_id=self.session_id, metadata=metadata
+        )
 
     def get_recent_decisions(self, n: int = 5) -> List[Dict]:
         return self._global.get_recent_decisions(n)
@@ -68,8 +75,8 @@ class MemoryManager:
         recent messages + relevant global facts.
         """
         return {
-            "session_id":       self.session_id,
-            "recent_messages":  self.get_messages(5),
+            "session_id": self.session_id,
+            "recent_messages": self.get_messages(5),
             "recent_decisions": self.get_recent_decisions(3),
             **{k: v for k, v in self._session.context.items()},
         }
@@ -81,5 +88,5 @@ class MemoryManager:
             f"agent_result:{self.session_id}:{agent_name}",
             result,
             agent=agent_name,
-            ttl_seconds=3600,   # 1 hour
+            ttl_seconds=3600,  # 1 hour
         )

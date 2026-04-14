@@ -27,14 +27,21 @@ def fetch_vendor_node(state: VendorState) -> Dict[str, Any]:
 
 
 def _run_matcher(state: VendorState) -> Dict[str, Any]:
-    from agents.vendor_management.tools.vendor_matcher import VendorMatcherTool, VendorMatcherInput
+    from agents.vendor_management.tools.vendor_matcher import (
+        VendorMatcherTool,
+        VendorMatcherInput,
+    )
 
     service = state.get("service_required")
     if not service:
         return {
             "error": "service_required is mandatory for find_best action",
             "requires_human_review": True,
-            "messages": [ToolMessage(content="Missing service_required.", tool_call_id="fetch_vendor")],
+            "messages": [
+                ToolMessage(
+                    content="Missing service_required.", tool_call_id="fetch_vendor"
+                )
+            ],
         }
 
     tool = VendorMatcherTool()
@@ -56,10 +63,12 @@ def _run_matcher(state: VendorState) -> Dict[str, Any]:
             "ranked_vendors": [],
             "top_recommendation": None,
             "requires_human_review": True,
-            "messages": [ToolMessage(
-                content=f"No vendors found for service '{service}' matching requirements.",
-                tool_call_id="fetch_vendor"
-            )],
+            "messages": [
+                ToolMessage(
+                    content=f"No vendors found for service '{service}' matching requirements.",
+                    tool_call_id="fetch_vendor",
+                )
+            ],
         }
 
     ranked = [v.model_dump() for v in result.ranked_vendors]
@@ -67,16 +76,24 @@ def _run_matcher(state: VendorState) -> Dict[str, Any]:
         "ranked_vendors": ranked,
         "top_recommendation": result.top_recommendation,
         "vendor_id": result.top_recommendation,
-        "messages": [ToolMessage(
-            content=f"Found {result.candidates_found} vendor(s) for '{service}'. Top: {result.top_recommendation}",
-            tool_call_id="fetch_vendor"
-        )],
+        "messages": [
+            ToolMessage(
+                content=f"Found {result.candidates_found} vendor(s) for '{service}'. Top: {result.top_recommendation}",
+                tool_call_id="fetch_vendor",
+            )
+        ],
     }
 
 
 def _run_search(state: VendorState) -> Dict[str, Any]:
-    from agents.vendor_management.tools.vendor_search import VendorSearchTool, VendorSearchInput
-    from agents.vendor_management.tools.vendor_scorecard import VendorScorecardTool, VendorScorecardInput
+    from agents.vendor_management.tools.vendor_search import (
+        VendorSearchTool,
+        VendorSearchInput,
+    )
+    from agents.vendor_management.tools.vendor_scorecard import (
+        VendorScorecardTool,
+        VendorScorecardInput,
+    )
 
     tool = VendorSearchTool()
     result = tool.execute(
@@ -91,10 +108,11 @@ def _run_search(state: VendorState) -> Dict[str, Any]:
         return {
             "error": f"Vendor '{state.get('vendor_name') or state.get('vendor_id')}' not found",
             "requires_human_review": True,
-            "messages": [ToolMessage(
-                content=f"Vendor not found in database.",
-                tool_call_id="fetch_vendor"
-            )],
+            "messages": [
+                ToolMessage(
+                    content="Vendor not found in database.", tool_call_id="fetch_vendor"
+                )
+            ],
         }
 
     vendor = result.vendors[0]
@@ -109,8 +127,10 @@ def _run_search(state: VendorState) -> Dict[str, Any]:
         "vendor_details": vendor.model_dump(),
         "sla_compliance": scorecard.sla_compliance,
         "overall_score": scorecard.overall_score,
-        "messages": [ToolMessage(
-            content=f"Fetched vendor: {vendor.name} (score: {scorecard.overall_score:.1f}/100)",
-            tool_call_id="fetch_vendor"
-        )],
+        "messages": [
+            ToolMessage(
+                content=f"Fetched vendor: {vendor.name} (score: {scorecard.overall_score:.1f}/100)",
+                tool_call_id="fetch_vendor",
+            )
+        ],
     }

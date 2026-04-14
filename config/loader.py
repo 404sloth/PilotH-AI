@@ -5,11 +5,10 @@ Called once at startup; results are cached.
 
 from __future__ import annotations
 
-import os
 import functools
 import logging
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import List, Optional
 
 import yaml
 from pydantic import BaseModel, Field
@@ -21,48 +20,50 @@ _CONFIG_DIR = Path(__file__).resolve().parent
 
 # ─── Pydantic models for YAML schemas ─────────────────────────────────────────
 
+
 class HITLConfig(BaseModel):
     enabled: bool = False
     trigger_on: List[str] = Field(default_factory=list)
 
 
 class AgentConfig(BaseModel):
-    name:          str
-    display_name:  str
-    enabled:       bool = True
-    module:        str
-    class_name:    str = Field(alias="class")
-    description:   str = ""
-    actions:       List[str] = Field(default_factory=list)
+    name: str
+    display_name: str
+    enabled: bool = True
+    module: str
+    class_name: str = Field(alias="class")
+    description: str = ""
+    actions: List[str] = Field(default_factory=list)
     default_action: str = ""
-    tools:         List[str] = Field(default_factory=list)
-    hitl:          HITLConfig = Field(default_factory=HITLConfig)
-    llm_required:  bool = False
-    tags:          List[str] = Field(default_factory=list)
+    tools: List[str] = Field(default_factory=list)
+    hitl: HITLConfig = Field(default_factory=HITLConfig)
+    llm_required: bool = False
+    tags: List[str] = Field(default_factory=list)
 
     class Config:
         populate_by_name = True
 
 
 class ToolConfig(BaseModel):
-    name:                  str
-    display_name:          str
-    owner_agent:           str
-    module:                str
-    class_name:            str = Field(alias="class")
-    description:           str = ""
-    requires_llm:          bool = False
-    requires_credentials:  bool = False
-    credentials_env:       List[str] = Field(default_factory=list)
-    production_note:       Optional[str] = None
-    rate_limit_per_min:    int = 60
-    tags:                  List[str] = Field(default_factory=list)
+    name: str
+    display_name: str
+    owner_agent: str
+    module: str
+    class_name: str = Field(alias="class")
+    description: str = ""
+    requires_llm: bool = False
+    requires_credentials: bool = False
+    credentials_env: List[str] = Field(default_factory=list)
+    production_note: Optional[str] = None
+    rate_limit_per_min: int = 60
+    tags: List[str] = Field(default_factory=list)
 
     class Config:
         populate_by_name = True
 
 
 # ─── Loaders (cached) ─────────────────────────────────────────────────────────
+
 
 @functools.lru_cache(maxsize=1)
 def load_agents_config() -> List[AgentConfig]:

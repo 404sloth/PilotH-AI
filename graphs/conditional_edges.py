@@ -16,10 +16,11 @@ Edge types implemented here:
 
 from __future__ import annotations
 
-from typing import Any, Dict, Literal
+from typing import Any, Dict
 
 
 # ─── 1. Binary gate ───────────────────────────────────────────────────────────
+
 
 def approved_or_rejected(state: Dict[str, Any]) -> str:
     """
@@ -31,6 +32,7 @@ def approved_or_rejected(state: Dict[str, Any]) -> str:
 
 
 # ─── 2. N-way action router ───────────────────────────────────────────────────
+
 
 def route_by_action(state: Dict[str, Any]) -> str:
     """
@@ -46,12 +48,22 @@ def route_by_action(state: Dict[str, Any]) -> str:
         )
     """
     action = state.get("action", "default")
-    allowed = {"schedule", "summarize", "brief", "find_best", "full_assessment",
-               "monitor_sla", "track_milestones", "analyze_budget", "default"}
+    allowed = {
+        "schedule",
+        "summarize",
+        "brief",
+        "find_best",
+        "full_assessment",
+        "monitor_sla",
+        "track_milestones",
+        "analyze_budget",
+        "default",
+    }
     return action if action in allowed else "default"
 
 
 # ─── 3. Error sentinel ────────────────────────────────────────────────────────
+
 
 def continue_or_abort(state: Dict[str, Any]) -> str:
     """
@@ -79,6 +91,7 @@ def continue_or_retry(state: Dict[str, Any], max_retries: int = 3) -> str:
 
 # ─── 4. Risk-level router ─────────────────────────────────────────────────────
 
+
 def route_by_risk(state: Dict[str, Any]) -> str:
     """
     Route based on computed risk score or risk_level string.
@@ -102,6 +115,7 @@ def route_by_risk(state: Dict[str, Any]) -> str:
 
 # ─── 5. Loop controller (iterative / retry pattern) ──────────────────────────
 
+
 def should_loop(state: Dict[str, Any], max_iterations: int = 5) -> str:
     """
     Generic loop gate for iterative refinement nodes.
@@ -112,17 +126,18 @@ def should_loop(state: Dict[str, Any], max_iterations: int = 5) -> str:
     Example use: an LLM that refines its output until a quality threshold is met.
     """
     iteration = state.get("iteration", 0)
-    quality = state.get("quality_score", 1.0)   # 0-1, 1.0 = perfect
+    quality = state.get("quality_score", 1.0)  # 0-1, 1.0 = perfect
     quality_threshold = state.get("quality_threshold", 0.8)
 
     if iteration >= max_iterations:
-        return "done"                  # hard stop
+        return "done"  # hard stop
     if quality >= quality_threshold:
-        return "done"                  # good enough
-    return "loop"                      # keep iterating
+        return "done"  # good enough
+    return "loop"  # keep iterating
 
 
 # ─── 6. HITL gate ─────────────────────────────────────────────────────────────
+
 
 def hitl_gate(state: Dict[str, Any]) -> str:
     """
@@ -141,6 +156,7 @@ def hitl_gate(state: Dict[str, Any]) -> str:
 
 
 # ─── 7. Agent-to-agent handoff router ────────────────────────────────────────
+
 
 def route_to_agent(state: Dict[str, Any]) -> str:
     """
@@ -161,6 +177,7 @@ def route_to_agent(state: Dict[str, Any]) -> str:
 
 
 # ─── 8. Multi-step completion checker ────────────────────────────────────────
+
 
 def all_steps_complete(state: Dict[str, Any]) -> str:
     """

@@ -19,6 +19,7 @@ class AgentRouter:
         session_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         from backend.services.agent_registry import get_agent
+
         agent = get_agent(agent_name)
         if not agent:
             raise ValueError(f"Agent '{agent_name}' is not registered.")

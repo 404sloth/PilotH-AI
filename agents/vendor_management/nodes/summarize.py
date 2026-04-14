@@ -33,14 +33,18 @@ def summarize_node(state: VendorState) -> Dict[str, Any]:
 # FIND_BEST summary
 # ---------------------------------------------------------------------------
 
+
 def _summarize_find_best(state: VendorState) -> Dict[str, Any]:
     ranked = state.get("ranked_vendors") or []
     service = state.get("service_required", "requested service")
 
     if not ranked:
         return {
-            "llm_summary":   f"No vendors found offering '{service}' matching the project requirements.",
-            "recommendations": ["Relax budget or quality constraints and retry", "Consider onboarding a new vendor"],
+            "llm_summary": f"No vendors found offering '{service}' matching the project requirements.",
+            "recommendations": [
+                "Relax budget or quality constraints and retry",
+                "Consider onboarding a new vendor",
+            ],
             "messages": [AIMessage(content="No matching vendors found.")],
         }
 
@@ -65,7 +69,7 @@ key differentiators vs. alternatives, and any caveats. Follow with 3 bullet-poin
         recs.append(f"Keep {ranked[1].get('name')} as backup vendor option")
 
     return {
-        "llm_summary":    summary,
+        "llm_summary": summary,
         "recommendations": recs,
         "messages": [AIMessage(content=summary)],
     }
@@ -75,7 +79,7 @@ def _fallback_find_best(top: Dict, ranked: list, service: str) -> str:
     return (
         f"For '{service}', {top.get('name')} is the top recommendation with a fit score of "
         f"{top.get('fit_score', 0):.1f}/100. They lead on quality ({top.get('quality_score', 'N/A')}/100) "
-        f"and on-time delivery ({(top.get('on_time_rate', 0) or 0)*100:.0f}%). "
+        f"and on-time delivery ({(top.get('on_time_rate', 0) or 0) * 100:.0f}%). "
         f"{len(ranked)} vendors evaluated in total."
     )
 
@@ -83,6 +87,7 @@ def _fallback_find_best(top: Dict, ranked: list, service: str) -> str:
 # ---------------------------------------------------------------------------
 # Single-vendor assessment summary
 # ---------------------------------------------------------------------------
+
 
 def _summarize_assessment(state: VendorState) -> Dict[str, Any]:
     if state.get("error"):
@@ -92,23 +97,23 @@ def _summarize_assessment(state: VendorState) -> Dict[str, Any]:
             "messages": [AIMessage(content=f"Error: {state['error']}")],
         }
 
-    vendor    = state.get("vendor_details") or {}
-    scores    = state.get("evaluation_scores") or {}
-    risks     = state.get("risk_items") or []
+    vendor = state.get("vendor_details") or {}
+    scores = state.get("evaluation_scores") or {}
+    risks = state.get("risk_items") or []
     strengths = state.get("strengths") or []
     weaknesses = state.get("weaknesses") or []
-    overall   = state.get("overall_score", 0.0)
-    sla_pct   = state.get("sla_compliance")
+    overall = state.get("overall_score", 0.0)
+    sla_pct = state.get("sla_compliance")
 
     context = {
-        "vendor_name":    vendor.get("name", state.get("vendor_name")),
-        "overall_score":  overall,
+        "vendor_name": vendor.get("name", state.get("vendor_name")),
+        "overall_score": overall,
         "sla_compliance": sla_pct,
-        "scores":         scores,
-        "strengths":      strengths,
-        "weaknesses":     weaknesses,
-        "risk_count":     len(risks),
-        "high_risks":     [r["description"] for r in risks if r.get("severity") == "high"],
+        "scores": scores,
+        "strengths": strengths,
+        "weaknesses": weaknesses,
+        "risk_count": len(risks),
+        "high_risks": [r["description"] for r in risks if r.get("severity") == "high"],
     }
 
     prompt = f"""You are a senior vendor relationship manager. Summarise this vendor assessment for an executive audience.
@@ -136,13 +141,15 @@ Keep it factual and actionable."""
         recs.append("Issue formal SLA breach notice and request remediation plan")
 
     if weaknesses:
-        recs.append(f"Work with vendor on improvement areas: {', '.join(weaknesses[:2])}")
+        recs.append(
+            f"Work with vendor on improvement areas: {', '.join(weaknesses[:2])}"
+        )
 
     if not recs:
         recs.append("Continue standard monitoring cadence — vendor in good standing")
 
     return {
-        "llm_summary":     summary,
+        "llm_summary": summary,
         "recommendations": recs,
         "messages": [AIMessage(content=summary)],
     }
@@ -162,9 +169,11 @@ def _fallback_assessment(ctx: Dict) -> str:
 # LLM helper
 # ---------------------------------------------------------------------------
 
+
 def _call_llm(prompt: str) -> str | None:
     try:
         from llm.model_factory import get_llm
+
         llm = get_llm(temperature=0.3)
         response = llm.invoke([HumanMessage(content=prompt)])
         return response.content.strip()

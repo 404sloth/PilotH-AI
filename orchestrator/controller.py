@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from config.settings import Settings
 from memory.session_store import get_session_store
@@ -29,9 +29,9 @@ class OrchestratorController:
     """
 
     def __init__(self, config: Settings) -> None:
-        self.config  = config
+        self.config = config
         self.session_store = get_session_store()
-        self.global_ctx    = get_global_context()
+        self.global_ctx = get_global_context()
         self.token_counter = get_token_counter()
 
     def handle(
@@ -52,17 +52,21 @@ class OrchestratorController:
             Dict with result, agent used, and session_id
         """
         session_id = session_id or str(uuid.uuid4())
-        session    = self.session_store.get_or_create(session_id)
+        session = self.session_store.get_or_create(session_id)
         session.add_message("user", message)
 
         # 1. Parse intent
         from orchestrator.intent_parser import IntentParser
+
         intent = IntentParser(self.config).parse(message, session.context)
 
-        logger.info("[%s] Intent: %s → agent=%s", session_id, intent["action"], intent["agent"])
+        logger.info(
+            "[%s] Intent: %s → agent=%s", session_id, intent["action"], intent["agent"]
+        )
 
         # 2. Route to agent
         from orchestrator.agent_router import AgentRouter
+
         result = AgentRouter().route(
             agent_name=intent["agent"],
             action=intent["action"],
@@ -71,7 +75,9 @@ class OrchestratorController:
         )
 
         # 3. Save to session and global memory
-        session.add_message("assistant", str(result.get("llm_summary", result.get("message", ""))))
+        session.add_message(
+            "assistant", str(result.get("llm_summary", result.get("message", "")))
+        )
         self.global_ctx.append_to_list(
             f"session:{session_id}:results",
             {"intent": intent, "result_keys": list(result.keys())},
@@ -80,8 +86,8 @@ class OrchestratorController:
         )
 
         return {
-            "session_id":    session_id,
-            "intent":        intent,
-            "result":        result,
-            "token_usage":   self.token_counter.totals(),
+            "session_id": session_id,
+            "intent": intent,
+            "result": result,
+            "token_usage": self.token_counter.totals(),
         }

@@ -36,16 +36,22 @@ def initialise_agents(config: Settings) -> Dict[str, object]:
         return _agents  # already initialised
 
     registry = get_tool_registry()
-    hitl     = HITLManager(config.hitl_threshold)
+    hitl = HITLManager(config.hitl_threshold)
 
     # ── Vendor Management Agent ──────────────────────────────
     from agents.vendor_management.agent import VendorManagementAgent
-    vendor_agent = VendorManagementAgent(config=config, tool_registry=registry, hitl_manager=hitl)
+
+    vendor_agent = VendorManagementAgent(
+        config=config, tool_registry=registry, hitl_manager=hitl
+    )
     _agents["vendor_management"] = vendor_agent
 
     # ── Meetings & Communication Agent ───────────────────────
     from agents.communication.agent import MeetingCommunicationAgent
-    meeting_agent = MeetingCommunicationAgent(config=config, tool_registry=registry, hitl_manager=hitl)
+
+    meeting_agent = MeetingCommunicationAgent(
+        config=config, tool_registry=registry, hitl_manager=hitl
+    )
     _agents["meetings_communication"] = meeting_agent
 
     logger.info("Agents initialised: %s", list(_agents.keys()))

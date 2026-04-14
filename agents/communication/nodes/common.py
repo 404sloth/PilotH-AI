@@ -21,7 +21,7 @@ def finalize_node(state: MeetingState) -> Dict[str, Any]:
     from memory.global_context import get_global_context
     from agents.communication.tools.slack_tool import SlackNotifierTool, SlackInput
 
-    ctx    = get_global_context()
+    ctx = get_global_context()
     action = state.get("action", "unknown")
 
     # --- Persist final state ---
@@ -30,11 +30,11 @@ def finalize_node(state: MeetingState) -> Dict[str, Any]:
         ctx.set(
             f"meeting:{meeting_id}:final_state",
             {
-                "action":          action,
-                "proposed_slots":  state.get("proposed_slots", []),
-                "calendar_link":   state.get("calendar_link"),
-                "summary":         state.get("meeting_summary"),
-                "agenda":          state.get("agenda_items", []),
+                "action": action,
+                "proposed_slots": state.get("proposed_slots", []),
+                "calendar_link": state.get("calendar_link"),
+                "summary": state.get("meeting_summary"),
+                "agenda": state.get("agenda_items", []),
                 "action_item_count": len(state.get("action_items") or []),
             },
             agent="meetings_communication",
@@ -45,6 +45,7 @@ def finalize_node(state: MeetingState) -> Dict[str, Any]:
     organizer_email = state.get("organizer_email", "")
     if organizer_email:
         from integrations.data_warehouse.meeting_db import get_person_by_email
+
         person = get_person_by_email(organizer_email)
         slack_handle = person.get("slack_handle") if person else None
         if slack_handle:
@@ -54,9 +55,9 @@ def finalize_node(state: MeetingState) -> Dict[str, Any]:
 
     # --- Build output message ---
     action_summary = {
-        "schedule":  f"Meeting scheduled. Link: {state.get('calendar_link', 'N/A')}",
+        "schedule": f"Meeting scheduled. Link: {state.get('calendar_link', 'N/A')}",
         "summarize": f"Summary complete. {len(state.get('action_items') or [])} action item(s) created.",
-        "brief":     f"Briefing compiled for {len(state.get('participant_bios') or [])} attendees.",
+        "brief": f"Briefing compiled for {len(state.get('participant_bios') or [])} attendees.",
     }.get(action, "Workflow complete.")
 
     return {
@@ -74,6 +75,7 @@ def hitl_check_node(state: MeetingState) -> Dict[str, Any]:
 
     try:
         from langgraph.errors import NodeInterrupt
+
         raise NodeInterrupt(
             "Human approval required: external attendees detected in calendar event. "
             f"Meeting: {state.get('title')}. "
@@ -89,13 +91,21 @@ def _build_slack_msg(state: MeetingState, action: str) -> str:
     title = state.get("title", "Meeting")
     if action == "schedule":
         slots = state.get("proposed_slots", [])
-        return (f":calendar: *{title}* has been scheduled.\n"
-                + (f"Proposed slot: {slots[0]}" if slots else "")
-                + (f"\n:link: <{state.get('calendar_link')}|Open in Calendar>" if state.get("calendar_link") else ""))
+        return (
+            f":calendar: *{title}* has been scheduled.\n"
+            + (f"Proposed slot: {slots[0]}" if slots else "")
+            + (
+                f"\n:link: <{state.get('calendar_link')}|Open in Calendar>"
+                if state.get("calendar_link")
+                else ""
+            )
+        )
     elif action == "summarize":
         n = len(state.get("action_items") or [])
         return f":memo: *{title}* summary ready. {n} action item(s) assigned."
     elif action == "brief":
         n = len(state.get("participant_bios") or [])
-        return f":briefcase: Pre-meeting briefing for *{title}* ({n} attendees) is ready."
+        return (
+            f":briefcase: Pre-meeting briefing for *{title}* ({n} attendees) is ready."
+        )
     return f":robot_face: Meeting workflow complete: *{title}*"

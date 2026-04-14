@@ -6,29 +6,31 @@ Aggregates performance, SLA, milestones, and contract in one DAL call.
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from typing import Optional
 from pydantic import BaseModel, Field
 from tools.base_tool import StructuredTool
 
 
 class VendorScorecardInput(BaseModel):
-    vendor_id: str = Field(..., description="Internal vendor ID to retrieve full scorecard for")
+    vendor_id: str = Field(
+        ..., description="Internal vendor ID to retrieve full scorecard for"
+    )
 
 
 class VendorScorecardOutput(BaseModel):
-    vendor_id:           str
-    name:                str
-    tier:                str
-    overall_score:       float   # derived composite 0-100
-    quality_score:       Optional[float]
-    on_time_rate:        Optional[float]
-    avg_client_rating:   Optional[float]
-    sla_compliance:      Optional[float]
-    active_projects:     int
-    delayed_milestones:  int
+    vendor_id: str
+    name: str
+    tier: str
+    overall_score: float  # derived composite 0-100
+    quality_score: Optional[float]
+    on_time_rate: Optional[float]
+    avg_client_rating: Optional[float]
+    sla_compliance: Optional[float]
+    active_projects: int
+    delayed_milestones: int
     has_active_contract: bool
-    contract_value:      Optional[float]
-    summary:             str
+    contract_value: Optional[float]
+    summary: str
 
 
 class VendorScorecardTool(StructuredTool):
@@ -71,15 +73,19 @@ class VendorScorecardTool(StructuredTool):
         contract = data.get("contract")
 
         delayed_ms = sum(1 for m in milestones if m.get("status") == "delayed")
-        active_projects = len({m["project_id"] for m in milestones if m.get("status") != "completed"})
+        active_projects = len(
+            {m["project_id"] for m in milestones if m.get("status") != "completed"}
+        )
 
         # Compute derived overall score
-        q  = float(v.get("quality_score") or 0)
+        q = float(v.get("quality_score") or 0)
         ot = (float(v.get("on_time_rate") or 0)) * 100
-        r  = float(v.get("avg_client_rating") or 0) / 5.0 * 100
+        r = float(v.get("avg_client_rating") or 0) / 5.0 * 100
         sc = float(sla.get("overall_compliance") or 100)
-        delay_penalty = min(delayed_ms * 5, 20)   # -5pts per delayed milestone, max -20
-        overall = round((q * 0.30 + ot * 0.25 + r * 0.20 + sc * 0.25) - delay_penalty, 1)
+        delay_penalty = min(delayed_ms * 5, 20)  # -5pts per delayed milestone, max -20
+        overall = round(
+            (q * 0.30 + ot * 0.25 + r * 0.20 + sc * 0.25) - delay_penalty, 1
+        )
         overall = max(0.0, min(100.0, overall))
 
         lines = [
@@ -88,7 +94,9 @@ class VendorScorecardTool(StructuredTool):
             f"SLA Compliance: {sla.get('overall_compliance', 'N/A')}% | Delayed Milestones: {delayed_ms}",
         ]
         if contract:
-            lines.append(f"Active Contract: {contract.get('contract_reference')} — ${contract.get('total_value', 0):,.0f} {contract.get('currency', 'USD')}")
+            lines.append(
+                f"Active Contract: {contract.get('contract_reference')} — ${contract.get('total_value', 0):,.0f} {contract.get('currency', 'USD')}"
+            )
 
         return VendorScorecardOutput(
             vendor_id=validated_input.vendor_id,

@@ -18,12 +18,12 @@ _TTL_SECONDS = 3600  # sessions expire after 1 hour of inactivity
 
 class Session:
     def __init__(self, session_id: str) -> None:
-        self.session_id   = session_id
-        self.messages:    List[Dict[str, Any]] = []
-        self.context:     Dict[str, Any]       = {}
-        self.agent_state: Dict[str, Any]       = {}
-        self.created_at   = time.time()
-        self.last_active  = time.time()
+        self.session_id = session_id
+        self.messages: List[Dict[str, Any]] = []
+        self.context: Dict[str, Any] = {}
+        self.agent_state: Dict[str, Any] = {}
+        self.created_at = time.time()
+        self.last_active = time.time()
 
     def add_message(self, role: str, content: str) -> None:
         self.messages.append({"role": role, "content": content, "ts": time.time()})
@@ -31,7 +31,7 @@ class Session:
 
     def set_context(self, key: str, value: Any) -> None:
         self.context[key] = value
-        self.last_active  = time.time()
+        self.last_active = time.time()
 
     def get_context(self, key: str, default: Any = None) -> Any:
         return self.context.get(key, default)
@@ -41,10 +41,10 @@ class Session:
 
     def to_dict(self) -> Dict[str, Any]:
         return {
-            "session_id":  self.session_id,
-            "messages":    self.messages[-20:],   # last 20 only for brevity
-            "context":     self.context,
-            "created_at":  self.created_at,
+            "session_id": self.session_id,
+            "messages": self.messages[-20:],  # last 20 only for brevity
+            "context": self.context,
+            "created_at": self.created_at,
             "last_active": self.last_active,
         }
 
@@ -55,7 +55,7 @@ class SessionStore:
     """
 
     def __init__(self) -> None:
-        self._lock     = threading.Lock()
+        self._lock = threading.Lock()
         self._sessions: Dict[str, Session] = {}
 
     def get_or_create(self, session_id: str) -> Session:

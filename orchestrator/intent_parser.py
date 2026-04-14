@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import json
 import logging
-import re
 from typing import Any, Dict
 
 from config.settings import Settings
@@ -17,20 +16,20 @@ logger = logging.getLogger(__name__)
 # Keyword-based fallback routing table
 _ROUTING_TABLE = {
     # Vendor management
-    "vendor":      ("vendor_management", "full_assessment"),
-    "supplier":    ("vendor_management", "full_assessment"),
-    "contract":    ("vendor_management", "summarize_contract"),
-    "sla":         ("vendor_management", "monitor_sla"),
-    "milestone":   ("vendor_management", "track_milestones"),
+    "vendor": ("vendor_management", "full_assessment"),
+    "supplier": ("vendor_management", "full_assessment"),
+    "contract": ("vendor_management", "summarize_contract"),
+    "sla": ("vendor_management", "monitor_sla"),
+    "milestone": ("vendor_management", "track_milestones"),
     "best vendor": ("vendor_management", "find_best"),
     # Meetings
-    "schedule":    ("meetings_communication", "schedule"),
-    "meeting":     ("meetings_communication", "schedule"),
-    "agenda":      ("meetings_communication", "brief"),
-    "brief":       ("meetings_communication", "brief"),
-    "summarize":   ("meetings_communication", "summarize"),
-    "summary":     ("meetings_communication", "summarize"),
-    "follow-up":   ("meetings_communication", "summarize"),
+    "schedule": ("meetings_communication", "schedule"),
+    "meeting": ("meetings_communication", "schedule"),
+    "agenda": ("meetings_communication", "brief"),
+    "brief": ("meetings_communication", "brief"),
+    "summarize": ("meetings_communication", "summarize"),
+    "summary": ("meetings_communication", "summarize"),
+    "follow-up": ("meetings_communication", "summarize"),
     # Default
 }
 
@@ -67,14 +66,16 @@ Return JSON: {{"agent": "<name>", "action": "<action>", "params": {{...}}}}"""
         content = response.content.strip().strip("```json").strip("```").strip()
         parsed = json.loads(content)
         return {
-            "agent":  parsed.get("agent", "vendor_management"),
+            "agent": parsed.get("agent", "vendor_management"),
             "action": parsed.get("action", "full_assessment"),
             "params": parsed.get("params", {}),
         }
 
     def _keyword_parse(self, message: str) -> Dict[str, Any]:
         lower = message.lower()
-        for keyword, (agent, action) in sorted(_ROUTING_TABLE.items(), key=lambda x: -len(x[0])):
+        for keyword, (agent, action) in sorted(
+            _ROUTING_TABLE.items(), key=lambda x: -len(x[0])
+        ):
             if keyword in lower:
                 return {"agent": agent, "action": action, "params": {}}
         return {"agent": "vendor_management", "action": "full_assessment", "params": {}}

@@ -12,33 +12,35 @@ from tools.base_tool import StructuredTool
 
 
 class MilestoneTrackerInput(BaseModel):
-    vendor_id:  str            = Field(..., description="Internal vendor ID")
-    project_id: Optional[str] = Field(None, description="Specific project ID (optional)")
+    vendor_id: str = Field(..., description="Internal vendor ID")
+    project_id: Optional[str] = Field(
+        None, description="Specific project ID (optional)"
+    )
 
 
 class Milestone(BaseModel):
-    id:                    str
-    project_id:            str
-    project_name:          str
-    name:                  str
-    due_date:              str
-    status:                str   # not_started | in_progress | completed | delayed | at_risk
+    id: str
+    project_id: str
+    project_name: str
+    name: str
+    due_date: str
+    status: str  # not_started | in_progress | completed | delayed | at_risk
     completion_percentage: float
-    notes:                 Optional[str]
-    days_overdue:          int
+    notes: Optional[str]
+    days_overdue: int
 
 
 class MilestoneTrackerOutput(BaseModel):
-    vendor_id:      str
-    project_id:     Optional[str]
-    total:          int
-    completed:      int
-    in_progress:    int
-    delayed:        int
-    at_risk:        int
-    not_started:    int
-    milestones:     List[Milestone]
-    overall_status: str   # on_track | at_risk | delayed
+    vendor_id: str
+    project_id: Optional[str]
+    total: int
+    completed: int
+    in_progress: int
+    delayed: int
+    at_risk: int
+    not_started: int
+    milestones: List[Milestone]
+    overall_status: str  # on_track | at_risk | delayed
     recommendations: List[str]
 
 
@@ -78,36 +80,48 @@ class MilestoneTrackerTool(StructuredTool):
             for r in rows
         ]
 
-        completed   = sum(1 for m in milestones if m.status == "completed")
+        completed = sum(1 for m in milestones if m.status == "completed")
         in_progress = sum(1 for m in milestones if m.status == "in_progress")
-        delayed     = sum(1 for m in milestones if m.status == "delayed")
-        at_risk     = sum(1 for m in milestones if m.status == "at_risk")
+        delayed = sum(1 for m in milestones if m.status == "delayed")
+        at_risk = sum(1 for m in milestones if m.status == "at_risk")
         not_started = sum(1 for m in milestones if m.status == "not_started")
 
         overall_status = (
-            "delayed"  if delayed  > 0 else
-            "at_risk"  if at_risk  > 0 else
-            "on_track"
+            "delayed" if delayed > 0 else "at_risk" if at_risk > 0 else "on_track"
         )
 
         recommendations: List[str] = []
         if delayed:
             names = [m.name for m in milestones if m.status == "delayed"]
-            worst = max((m for m in milestones if m.status == "delayed"), key=lambda m: m.days_overdue, default=None)
+            worst = max(
+                (m for m in milestones if m.status == "delayed"),
+                key=lambda m: m.days_overdue,
+                default=None,
+            )
             recommendations.append(
                 f"[CRITICAL] {len(names)} delayed milestone(s): {', '.join(names)}. "
-                + (f"Worst: '{worst.name}' is {worst.days_overdue}d overdue." if worst else "")
+                + (
+                    f"Worst: '{worst.name}' is {worst.days_overdue}d overdue."
+                    if worst
+                    else ""
+                )
             )
 
         if at_risk:
             names = [m.name for m in milestones if m.status == "at_risk"]
-            recommendations.append(f"[WARNING] At-risk milestones: {', '.join(names)} — review resource allocation.")
+            recommendations.append(
+                f"[WARNING] At-risk milestones: {', '.join(names)} — review resource allocation."
+            )
 
         if overall_status != "on_track":
-            recommendations.append("Schedule an urgent status call with the vendor project lead.")
+            recommendations.append(
+                "Schedule an urgent status call with the vendor project lead."
+            )
 
         if not milestones:
-            recommendations.append("No milestone data available. Request project plan from vendor.")
+            recommendations.append(
+                "No milestone data available. Request project plan from vendor."
+            )
 
         return MilestoneTrackerOutput(
             vendor_id=validated_input.vendor_id,

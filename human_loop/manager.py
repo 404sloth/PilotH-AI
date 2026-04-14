@@ -1,6 +1,7 @@
 from langgraph.errors import NodeInterrupt
 import uuid
 
+
 class HITLManager:
     def __init__(self, threshold: float = 0.7):
         self.threshold = threshold

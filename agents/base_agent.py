@@ -6,7 +6,6 @@ from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional, Type
 from pydantic import BaseModel, ValidationError
 from langgraph.graph import StateGraph
-from langchain_core.language_models import BaseChatModel
 from langchain_core.tools import BaseTool
 
 from human_loop.manager import HITLManager
@@ -16,18 +15,20 @@ from config.settings import Settings
 
 class AgentInputError(Exception):
     """Raised when input validation fails."""
+
     pass
 
 
 class AgentOutputError(Exception):
     """Raised when output validation fails."""
+
     pass
 
 
 class BaseAgent(ABC):
     """
     Abstract base class for all AI agents.
-    
+
     Subclasses must define:
         - name: unique identifier string
         - get_subgraph(): returns compiled LangGraph StateGraph
@@ -38,7 +39,7 @@ class BaseAgent(ABC):
         self,
         config: Settings,
         tool_registry: Any = None,  # Will be ToolRegistry instance
-        hitl_manager: Optional[HITLManager] = None
+        hitl_manager: Optional[HITLManager] = None,
     ):
         self.config = config
         self.tool_registry = tool_registry
@@ -98,7 +99,7 @@ class BaseAgent(ABC):
     def get_subgraph(self) -> StateGraph:
         """
         Return a compiled LangGraph StateGraph for this agent's workflow.
-        
+
         The graph should use the agent's state schema and include all nodes
         and edges. It will be invoked by the orchestrator.
         """
@@ -107,7 +108,7 @@ class BaseAgent(ABC):
     def execute(self, input_data: Dict[str, Any]) -> Dict[str, Any]:
         """
         Execute the agent's workflow with validated input.
-        
+
         Args:
             input_data: Raw input dictionary (will be validated)
 
@@ -120,10 +121,10 @@ class BaseAgent(ABC):
         """
         validated_input = self.validate_input(input_data)
         graph = self.get_subgraph()
-        
+
         # Run the graph (uses checkpointer from orchestrator context if provided)
         result = graph.invoke(validated_input)
-        
+
         validated_output = self.validate_output(result)
         return validated_output
 

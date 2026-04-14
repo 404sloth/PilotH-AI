@@ -58,9 +58,9 @@ def build_vendor_graph(
 
     # Register nodes
     builder.add_node("fetch_vendor", fetch_vendor_node)
-    builder.add_node("evaluate",     evaluate_node)
-    builder.add_node("risk_detect",  risk_detect_node)
-    builder.add_node("summarize",    summarize_node)
+    builder.add_node("evaluate", evaluate_node)
+    builder.add_node("risk_detect", risk_detect_node)
+    builder.add_node("summarize", summarize_node)
 
     # Entry
     builder.add_edge(START, "fetch_vendor")
@@ -76,9 +76,9 @@ def build_vendor_graph(
     )
 
     # Linear path for full assessment / evaluate / sla / milestone actions
-    builder.add_edge("evaluate",    "risk_detect")
+    builder.add_edge("evaluate", "risk_detect")
     builder.add_edge("risk_detect", "summarize")
-    builder.add_edge("summarize",   END)
+    builder.add_edge("summarize", END)
 
     if checkpointer:
         return builder.compile(checkpointer=checkpointer)

@@ -6,38 +6,44 @@ All SQL execution delegated to vendor_db DAL.
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import List, Optional
 from pydantic import BaseModel, Field
 from tools.base_tool import StructuredTool
 
 
 class VendorSearchInput(BaseModel):
     vendor_name: Optional[str] = Field(None, description="Partial or full vendor name")
-    vendor_id:   Optional[str] = Field(None, description="Exact internal vendor ID (e.g. V-001)")
-    service_tag: Optional[str] = Field(None, description="Service tag to filter by (e.g. cloud_hosting)")
-    country:     Optional[str] = Field(None, description="ISO 2-letter country code (e.g. US)")
-    limit:       int            = Field(10, ge=1, le=50, description="Max results to return")
+    vendor_id: Optional[str] = Field(
+        None, description="Exact internal vendor ID (e.g. V-001)"
+    )
+    service_tag: Optional[str] = Field(
+        None, description="Service tag to filter by (e.g. cloud_hosting)"
+    )
+    country: Optional[str] = Field(
+        None, description="ISO 2-letter country code (e.g. US)"
+    )
+    limit: int = Field(10, ge=1, le=50, description="Max results to return")
 
 
 class VendorRecord(BaseModel):
-    vendor_id:                str
-    name:                     str
-    tier:                     str
-    country:                  str
-    contract_status:          str
-    category:                 str
-    services:                 List[str]
-    quality_score:            Optional[float]
-    on_time_rate:             Optional[float]
-    avg_client_rating:        Optional[float]
-    cost_competitiveness:     Optional[float]
+    vendor_id: str
+    name: str
+    tier: str
+    country: str
+    contract_status: str
+    category: str
+    services: List[str]
+    quality_score: Optional[float]
+    on_time_rate: Optional[float]
+    avg_client_rating: Optional[float]
+    cost_competitiveness: Optional[float]
     total_projects_completed: Optional[int]
-    website:                  Optional[str]
+    website: Optional[str]
 
 
 class VendorSearchOutput(BaseModel):
-    found:   bool
-    count:   int = 0
+    found: bool
+    count: int = 0
     vendors: List[VendorRecord] = Field(default_factory=list)
 
 

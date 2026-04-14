@@ -32,6 +32,7 @@ def load_subgraph(agent_name: str) -> Optional[Any]:
         Compiled LangGraph StateGraph, or None if not found.
     """
     from config.loader import get_agent_config
+
     cfg = get_agent_config(agent_name)
     if not cfg:
         logger.warning("No config found for agent '%s'", agent_name)
@@ -48,7 +49,11 @@ def load_subgraph(agent_name: str) -> Optional[Any]:
     # Find the build_*_graph function
     build_fn = None
     for attr_name in dir(mod):
-        if attr_name.startswith("build_") and attr_name.endswith("_graph") and callable(getattr(mod, attr_name)):
+        if (
+            attr_name.startswith("build_")
+            and attr_name.endswith("_graph")
+            and callable(getattr(mod, attr_name))
+        ):
             build_fn = getattr(mod, attr_name)
             break
 
@@ -57,7 +62,12 @@ def load_subgraph(agent_name: str) -> Optional[Any]:
         return None
 
     compiled = build_fn()
-    logger.info("Subgraph loaded for agent '%s' via %s.%s", agent_name, graph_module_path, build_fn.__name__)
+    logger.info(
+        "Subgraph loaded for agent '%s' via %s.%s",
+        agent_name,
+        graph_module_path,
+        build_fn.__name__,
+    )
     return compiled
 
 
@@ -70,4 +80,5 @@ def reload_subgraph(agent_name: str) -> Optional[Any]:
 def list_available_subgraphs() -> list[str]:
     """Return names of all enabled agents that have loadable subgraphs."""
     from config.loader import load_agents_config
+
     return [a.name for a in load_agents_config() if a.enabled]

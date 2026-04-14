@@ -3,20 +3,21 @@ Base tool class with built-in validation and retries.
 """
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict, Type, Optional
+from typing import Any, Type
 from pydantic import BaseModel, ValidationError
 from langchain_core.tools import BaseTool as LangChainBaseTool
 
 
 class ToolExecutionError(Exception):
     """Raised when a tool fails to execute."""
+
     pass
 
 
 class StructuredTool(LangChainBaseTool, ABC):
     """
     Enhanced base tool with Pydantic validation and retry logic.
-    
+
     Subclasses must:
         - Define `name` and `description` class attributes
         - Define `args_schema` as a Pydantic model
@@ -30,7 +31,7 @@ class StructuredTool(LangChainBaseTool, ABC):
     def _run(self, **kwargs: Any) -> Any:
         """
         Internal LangChain tool execution method.
-        
+
         Validates inputs using args_schema, then calls execute().
         Supports retries on failure.
         """
@@ -53,6 +54,7 @@ class StructuredTool(LangChainBaseTool, ABC):
                 last_exception = e
                 if attempt < self.max_retries - 1:
                     import time
+
                     time.sleep(self.retry_delay)
                     continue
 
@@ -78,6 +80,7 @@ class StructuredTool(LangChainBaseTool, ABC):
                 last_exception = e
                 if attempt < self.max_retries - 1:
                     import asyncio
+
                     await asyncio.sleep(self.retry_delay)
                     continue
 
@@ -89,7 +92,7 @@ class StructuredTool(LangChainBaseTool, ABC):
     def execute(self, validated_input: BaseModel) -> Any:
         """
         Execute the tool's main logic with validated input.
-        
+
         Args:
             validated_input: Instance of args_schema with validated data
 
@@ -104,4 +107,5 @@ class StructuredTool(LangChainBaseTool, ABC):
         By default, calls sync execute in a thread.
         """
         import asyncio
+
         return await asyncio.to_thread(self.execute, validated_input)

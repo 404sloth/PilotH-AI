@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 # Vendor lookup
 # ============================================================
 
+
 def search_vendors(
     vendor_name: Optional[str] = None,
     vendor_id: Optional[str] = None,
@@ -72,7 +73,9 @@ def search_vendors(
             params.append(f"%{vendor_name.lower()}%")
 
         if service_tag:
-            query += " JOIN vendor_services vs ON vs.vendor_id = v.id AND vs.service_tag = ?"
+            query += (
+                " JOIN vendor_services vs ON vs.vendor_id = v.id AND vs.service_tag = ?"
+            )
             params.insert(0 if not filters else len(params), service_tag)
             # Insert at right position: service_tag goes into JOIN, not WHERE
             # We need to rewrite slightly for clarity:
@@ -83,7 +86,9 @@ def search_vendors(
 
         # Rebuild with service_tag handled in JOIN
         # Clean rewrite to avoid positional confusion:
-        query, params = _build_vendor_query(vendor_id, vendor_name, service_tag, country)
+        query, params = _build_vendor_query(
+            vendor_id, vendor_name, service_tag, country
+        )
 
         query += f" LIMIT {int(limit)}"
 
@@ -95,7 +100,10 @@ def search_vendors(
             r = dict(row)
             # Hydrate services
             cur2 = conn.cursor()
-            cur2.execute("SELECT service_tag FROM vendor_services WHERE vendor_id = ?", (r["vendor_id"],))
+            cur2.execute(
+                "SELECT service_tag FROM vendor_services WHERE vendor_id = ?",
+                (r["vendor_id"],),
+            )
             r["services"] = [s["service_tag"] for s in cur2.fetchall()]
             results.append(r)
 
@@ -139,7 +147,9 @@ def _build_vendor_query(
     params: List[Any] = []
 
     if service_tag:
-        joins.append("JOIN vendor_services vs2 ON vs2.vendor_id = v.id AND vs2.service_tag = ?")
+        joins.append(
+            "JOIN vendor_services vs2 ON vs2.vendor_id = v.id AND vs2.service_tag = ?"
+        )
         params.append(service_tag)
 
     if vendor_id:
@@ -170,6 +180,7 @@ def get_vendor_by_id(vendor_id: str) -> Optional[Dict[str, Any]]:
 # ============================================================
 # Vendor matching / best-fit selection
 # ============================================================
+
 
 def find_best_vendors_for_service(
     service_tag: str,
@@ -266,7 +277,10 @@ def find_best_vendors_for_service(
             r["fit_score"] = _compute_fit_score(r, requirements)
             # Add services list
             cur2 = conn.cursor()
-            cur2.execute("SELECT service_tag FROM vendor_services WHERE vendor_id = ?", (r["vendor_id"],))
+            cur2.execute(
+                "SELECT service_tag FROM vendor_services WHERE vendor_id = ?",
+                (r["vendor_id"],),
+            )
             r["services"] = [s["service_tag"] for s in cur2.fetchall()]
             scored.append(r)
 
@@ -281,13 +295,13 @@ def _compute_fit_score(vendor: Dict[str, Any], requirements: Dict[str, Any]) -> 
     Weights are deliberately transparent so the LLM can explain them.
     """
     weights = {
-        "quality":         0.25,
-        "on_time":         0.20,
-        "cost":            0.20,
-        "rating":          0.15,
-        "communication":   0.10,
-        "innovation":      0.05,
-        "experience":      0.05,
+        "quality": 0.25,
+        "on_time": 0.20,
+        "cost": 0.20,
+        "rating": 0.15,
+        "communication": 0.10,
+        "innovation": 0.05,
+        "experience": 0.05,
     }
 
     def pct(val, lo, hi):
@@ -295,22 +309,22 @@ def _compute_fit_score(vendor: Dict[str, Any], requirements: Dict[str, Any]) -> 
             return 50.0
         return max(0.0, min(100.0, (val - lo) / (hi - lo) * 100))
 
-    quality_score         = float(vendor.get("quality_score") or 0)
-    on_time_score         = (float(vendor.get("on_time_rate") or 0)) * 100
-    cost_score            = float(vendor.get("cost_competitiveness") or 50)
-    rating_score          = pct(vendor.get("avg_client_rating"), 1, 5)
-    communication_score   = float(vendor.get("communication_score") or 50)
-    innovation_score      = float(vendor.get("innovation_score") or 50)
-    experience_score      = pct(vendor.get("total_projects_completed"), 0, 300)
+    quality_score = float(vendor.get("quality_score") or 0)
+    on_time_score = (float(vendor.get("on_time_rate") or 0)) * 100
+    cost_score = float(vendor.get("cost_competitiveness") or 50)
+    rating_score = pct(vendor.get("avg_client_rating"), 1, 5)
+    communication_score = float(vendor.get("communication_score") or 50)
+    innovation_score = float(vendor.get("innovation_score") or 50)
+    experience_score = pct(vendor.get("total_projects_completed"), 0, 300)
 
     composite = (
-        weights["quality"]       * quality_score +
-        weights["on_time"]       * on_time_score +
-        weights["cost"]          * cost_score +
-        weights["rating"]        * rating_score +
-        weights["communication"] * communication_score +
-        weights["innovation"]    * innovation_score +
-        weights["experience"]    * experience_score
+        weights["quality"] * quality_score
+        + weights["on_time"] * on_time_score
+        + weights["cost"] * cost_score
+        + weights["rating"] * rating_score
+        + weights["communication"] * communication_score
+        + weights["innovation"] * innovation_score
+        + weights["experience"] * experience_score
     )
 
     return round(composite, 2)
@@ -319,6 +333,7 @@ def _compute_fit_score(vendor: Dict[str, Any], requirements: Dict[str, Any]) -> 
 # ============================================================
 # Contract helpers
 # ============================================================
+
 
 def get_contract_details(
     vendor_id: Optional[str] = None,
@@ -359,10 +374,15 @@ def get_contract_details(
             return None
 
         cid = row["id"]
-        cur.execute("SELECT deliverable FROM contract_deliverables WHERE contract_id = ?", (cid,))
+        cur.execute(
+            "SELECT deliverable FROM contract_deliverables WHERE contract_id = ?",
+            (cid,),
+        )
         deliverables = [r["deliverable"] for r in cur.fetchall()]
 
-        cur.execute("SELECT condition FROM contract_conditions WHERE contract_id = ?", (cid,))
+        cur.execute(
+            "SELECT condition FROM contract_conditions WHERE contract_id = ?", (cid,)
+        )
         conditions = [r["condition"] for r in cur.fetchall()]
 
         result = dict(row)
@@ -374,6 +394,7 @@ def get_contract_details(
 # ============================================================
 # SLA helpers
 # ============================================================
+
 
 def get_sla_compliance(
     vendor_id: str,
@@ -416,16 +437,17 @@ def get_sla_compliance(
         overall_compliance = round(compliant_count / len(metrics) * 100, 1)
 
         return {
-            "period_start":        record["period_start"],
-            "period_end":          record["period_end"],
-            "overall_compliance":  overall_compliance,
-            "metrics":             metrics,
+            "period_start": record["period_start"],
+            "period_end": record["period_end"],
+            "overall_compliance": overall_compliance,
+            "metrics": metrics,
         }
 
 
 # ============================================================
 # Milestone helpers
 # ============================================================
+
 
 def get_milestones(
     vendor_id: str,
@@ -459,6 +481,7 @@ def get_milestones(
 # ============================================================
 # Client project helpers
 # ============================================================
+
 
 def get_client_project(client_project_id: str) -> Optional[Dict[str, Any]]:
     """Fetch a client project with its requirements map."""
@@ -527,6 +550,7 @@ def get_saved_selections(client_project_id: str) -> List[Dict[str, Any]]:
 # Analytics
 # ============================================================
 
+
 def get_vendor_scorecard(vendor_id: str) -> Optional[Dict[str, Any]]:
     """
     Return a full enriched scorecard for a vendor: perf + latest SLA + active milestones.
@@ -535,13 +559,13 @@ def get_vendor_scorecard(vendor_id: str) -> Optional[Dict[str, Any]]:
     if not vendor:
         return None
 
-    sla   = get_sla_compliance(vendor_id)
+    sla = get_sla_compliance(vendor_id)
     milestones = get_milestones(vendor_id)
-    contract   = get_contract_details(vendor_id=vendor_id)
+    contract = get_contract_details(vendor_id=vendor_id)
 
     return {
-        "vendor":     vendor,
-        "sla":        sla,
+        "vendor": vendor,
+        "sla": sla,
         "milestones": milestones,
-        "contract":   contract,
+        "contract": contract,
     }

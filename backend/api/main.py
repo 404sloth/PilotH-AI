@@ -6,7 +6,6 @@ Initialises DB, agents, and mounts all routers.
 from __future__ import annotations
 
 import logging
-import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -28,11 +27,13 @@ async def lifespan(app: FastAPI):
 
     # 1. Ensure database is ready
     from integrations.data_warehouse.sqlite_client import init_db
+
     init_db(seed=True)
     logger.info("Database ready.")
 
     # 2. Initialise all agents
     from backend.services.agent_registry import initialise_agents
+
     initialise_agents(settings)
 
     yield
@@ -65,10 +66,10 @@ def create_app() -> FastAPI:
     from backend.api.routes.vendor_routes import router as vendor_router
     from backend.api.routes.human_loop_routes import router as hitl_router
 
-    app.include_router(health_router,  prefix="/health",  tags=["Health"])
-    app.include_router(agent_router,   prefix="/agents",  tags=["Agents"])
-    app.include_router(vendor_router,  prefix="/vendors", tags=["Vendor Management"])
-    app.include_router(hitl_router,    prefix="/hitl",    tags=["Human-in-the-Loop"])
+    app.include_router(health_router, prefix="/health", tags=["Health"])
+    app.include_router(agent_router, prefix="/agents", tags=["Agents"])
+    app.include_router(vendor_router, prefix="/vendors", tags=["Vendor Management"])
+    app.include_router(hitl_router, prefix="/hitl", tags=["Human-in-the-Loop"])
 
     return app
 
@@ -78,4 +79,5 @@ app = create_app()
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run("backend.api.main:app", host="0.0.0.0", port=8000, reload=True)

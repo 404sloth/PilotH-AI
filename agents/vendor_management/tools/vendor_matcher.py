@@ -14,7 +14,8 @@ from tools.base_tool import StructuredTool
 
 class VendorMatcherInput(BaseModel):
     service_tag: str = Field(
-        ..., description="Service category required (e.g. cloud_hosting, data_analytics, ci_cd_pipelines)"
+        ...,
+        description="Service category required (e.g. cloud_hosting, data_analytics, ci_cd_pipelines)",
     )
     budget_monthly: Optional[float] = Field(
         None, description="Maximum monthly budget in USD"
@@ -32,36 +33,35 @@ class VendorMatcherInput(BaseModel):
         None, description="Required vendor tier: preferred | standard | trial"
     )
     country: Optional[str] = Field(
-        None, description="Restrict to vendors in a specific country (ISO code, e.g. US)"
+        None,
+        description="Restrict to vendors in a specific country (ISO code, e.g. US)",
     )
-    top_n: int = Field(
-        5, ge=1, le=20, description="Number of top vendors to return"
-    )
+    top_n: int = Field(5, ge=1, le=20, description="Number of top vendors to return")
     client_project_id: Optional[str] = Field(
         None, description="Client project ID to persist selections (optional)"
     )
 
 
 class RankedVendor(BaseModel):
-    rank:                     int
-    vendor_id:                str
-    name:                     str
-    tier:                     str
-    fit_score:                float   # 0-100 composite score
-    quality_score:            Optional[float]
-    on_time_rate:             Optional[float]
-    avg_client_rating:        Optional[float]
-    cost_competitiveness:     Optional[float]
-    monthly_rate:             Optional[float]
-    currency:                 Optional[str]
-    services:                 List[str]
-    selection_reason:         str
+    rank: int
+    vendor_id: str
+    name: str
+    tier: str
+    fit_score: float  # 0-100 composite score
+    quality_score: Optional[float]
+    on_time_rate: Optional[float]
+    avg_client_rating: Optional[float]
+    cost_competitiveness: Optional[float]
+    monthly_rate: Optional[float]
+    currency: Optional[str]
+    services: List[str]
+    selection_reason: str
 
 
 class VendorMatcherOutput(BaseModel):
-    service_required:  str
-    candidates_found:  int
-    ranked_vendors:    List[RankedVendor]
+    service_required: str
+    candidates_found: int
+    ranked_vendors: List[RankedVendor]
     top_recommendation: Optional[str] = None  # vendor_id of #1
 
 
@@ -86,8 +86,8 @@ class VendorMatcherTool(StructuredTool):
         )
 
         requirements: Dict[str, Any] = {
-            "min_quality_score":     validated_input.min_quality_score,
-            "min_on_time_rate":      validated_input.min_on_time_rate,
+            "min_quality_score": validated_input.min_quality_score,
+            "min_on_time_rate": validated_input.min_on_time_rate,
             "min_avg_client_rating": validated_input.min_avg_client_rating,
         }
         if validated_input.budget_monthly is not None:
@@ -145,9 +145,9 @@ def _build_reason(vendor: Dict[str, Any], rank: int) -> str:
     parts = []
     q = vendor.get("quality_score", 0)
     ot = (vendor.get("on_time_rate") or 0) * 100
-    r  = vendor.get("avg_client_rating", 0)
+    r = vendor.get("avg_client_rating", 0)
     cost = vendor.get("cost_competitiveness", 0)
-    exp  = vendor.get("total_projects_completed", 0)
+    exp = vendor.get("total_projects_completed", 0)
     rate = vendor.get("monthly_rate")
 
     if q >= 90:
@@ -181,5 +181,9 @@ def _build_reason(vendor: Dict[str, Any], rank: int) -> str:
     if vendor.get("tier") == "preferred":
         parts.append("preferred tier")
 
-    prefix = {1: "Top choice — ", 2: "Strong runner-up — ", 3: "Solid alternative — "}.get(rank, "Option — ")
+    prefix = {
+        1: "Top choice — ",
+        2: "Strong runner-up — ",
+        3: "Solid alternative — ",
+    }.get(rank, "Option — ")
     return prefix + (", ".join(parts) if parts else "meets minimum requirements")

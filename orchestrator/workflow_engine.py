@@ -9,8 +9,7 @@ For simple single-agent requests, calls the agent directly.
 from __future__ import annotations
 
 import logging
-import uuid
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from config.settings import Settings
 
@@ -54,12 +53,13 @@ class WorkflowEngine:
     def _run_sequential(self, tasks: List[Dict], session_id: str) -> Dict[str, Any]:
         """Run tasks one after another, passing context forward."""
         from orchestrator.agent_router import AgentRouter
-        router  = AgentRouter()
+
+        router = AgentRouter()
         results = {}
         carry_context: Dict[str, Any] = {}
 
         for task in tasks:
-            agent  = task["agent"]
+            agent = task["agent"]
             action = task["action"]
             params = {**task.get("params", {}), **carry_context}
             try:
@@ -67,10 +67,14 @@ class WorkflowEngine:
                 results[f"{agent}:{action}"] = result
                 # carry forward key fields for next task
                 if isinstance(result, dict):
-                    carry_context.update({
-                        k: v for k, v in result.items()
-                        if k in ("meeting_id", "vendor_id", "summary", "calendar_link")
-                    })
+                    carry_context.update(
+                        {
+                            k: v
+                            for k, v in result.items()
+                            if k
+                            in ("meeting_id", "vendor_id", "summary", "calendar_link")
+                        }
+                    )
             except Exception as e:
                 logger.error("Task %s/%s failed: %s", agent, action, e)
                 results[f"{agent}:{action}"] = {"error": str(e)}
@@ -83,13 +87,16 @@ class WorkflowEngine:
         """Run tasks concurrently using a thread pool."""
         from concurrent.futures import ThreadPoolExecutor, as_completed
         from orchestrator.agent_router import AgentRouter
-        router  = AgentRouter()
+
+        router = AgentRouter()
         results = {}
 
         def _run_one(task: Dict) -> tuple:
             key = f"{task['agent']}:{task['action']}"
             try:
-                res = router.route(task["agent"], task["action"], task.get("params", {}), session_id)
+                res = router.route(
+                    task["agent"], task["action"], task.get("params", {}), session_id
+                )
                 return key, res
             except Exception as e:
                 return key, {"error": str(e)}
@@ -107,24 +114,34 @@ class WorkflowEngine:
     def _run_via_graph(self, tasks: List[Dict], session_id: str) -> Dict[str, Any]:
         """Run through the top-level orchestration graph."""
         from graphs.orchestration_graph import build_orchestration_graph
+
         graph = build_orchestration_graph()
         first = tasks[0] if tasks else {}
         initial_state = {
-            "session_id":      session_id,
-            "user_message":    first.get("action", ""),
-            "context":         first.get("params", {}),
-            "intent":          {"agent": first.get("agent",""), "action": first.get("action",""), "params": first.get("params",{})},
-            "next_agent":      first.get("agent", "vendor_management"),
-            "messages":        [],
-            "retry_count":     0,
-            "iteration":       0,
-            "quality_score":   0.0,
+            "session_id": session_id,
+            "user_message": first.get("action", ""),
+            "context": first.get("params", {}),
+            "intent": {
+                "agent": first.get("agent", ""),
+                "action": first.get("action", ""),
+                "params": first.get("params", {}),
+            },
+            "next_agent": first.get("agent", "vendor_management"),
+            "messages": [],
+            "retry_count": 0,
+            "iteration": 0,
+            "quality_score": 0.0,
             "quality_threshold": 0.8,
-            "risk_score":      0.0,
-            "agent_results":   {},
+            "risk_score": 0.0,
+            "agent_results": {},
             "requires_approval": False,
-            "approved":        False,
-            "human_rejected":  False,
+            "approved": False,
+            "human_rejected": False,
         }
         result = graph.invoke(initial_state)
-        return {"mode": "graph", "session_id": session_id, "final_response": result.get("final_response"), "results": result.get("agent_results", {})}
+        return {
+            "mode": "graph",
+            "session_id": session_id,
+            "final_response": result.get("final_response"),
+            "results": result.get("agent_results", {}),
+        }

@@ -12,28 +12,28 @@ from tools.base_tool import StructuredTool
 
 
 class SLAMonitorInput(BaseModel):
-    vendor_id:   str = Field(..., description="Internal vendor ID")
+    vendor_id: str = Field(..., description="Internal vendor ID")
     period_days: int = Field(30, ge=1, le=365, description="Lookback period in days")
 
 
 class SLAMetric(BaseModel):
     metric_name: str
-    target:      float
-    actual:      float
-    unit:        str
-    compliant:   bool
-    trend:       str  # improving | declining | stable
+    target: float
+    actual: float
+    unit: str
+    compliant: bool
+    trend: str  # improving | declining | stable
 
 
 class SLAMonitorOutput(BaseModel):
-    vendor_id:          str
-    period_start:       Optional[str]
-    period_end:         Optional[str]
+    vendor_id: str
+    period_start: Optional[str]
+    period_end: Optional[str]
     overall_compliance: float  # 0-100 percent
-    metrics:            List[SLAMetric]
-    breaches:           List[str]
-    recommendations:    List[str]
-    data_available:     bool
+    metrics: List[SLAMetric]
+    breaches: List[str]
+    recommendations: List[str]
+    data_available: bool
 
 
 class SLAMonitorTool(StructuredTool):
@@ -70,12 +70,15 @@ class SLAMonitorTool(StructuredTool):
 
         breaches = [
             f"{m.metric_name}: actual {m.actual}{m.unit} vs target {m.target}{m.unit} ({m.trend})"
-            for m in metrics if not m.compliant
+            for m in metrics
+            if not m.compliant
         ]
 
         recommendations: List[str] = []
         if breaches:
-            recommendations.append("Schedule SLA review meeting with vendor within 2 weeks")
+            recommendations.append(
+                "Schedule SLA review meeting with vendor within 2 weeks"
+            )
         for m in metrics:
             if not m.compliant and m.trend == "declining":
                 recommendations.append(

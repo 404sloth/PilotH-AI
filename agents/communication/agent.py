@@ -4,14 +4,14 @@ Meetings & Communication Agent.
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Type
+from typing import Any, Dict, Optional, Type
 from pydantic import BaseModel
 
 from agents.base_agent import BaseAgent
 from config.settings import Settings
 from human_loop.manager import HITLManager
 
-from .schemas import MeetingAction, MeetingRequestInput, MeetingAgentOutput, MeetingState
+from .schemas import MeetingRequestInput, MeetingAgentOutput, MeetingState
 from .graph import build_meeting_graph
 from .tools import (
     GoogleCalendarCreateTool,
@@ -84,52 +84,54 @@ class MeetingCommunicationAgent(BaseAgent):
 
         # Map to LangGraph state
         state_input: Dict[str, Any] = {
-            "action":               validated.action,
-            "title":                validated.title,
-            "participants":         [p.model_dump() for p in validated.participants],
-            "duration_minutes":     validated.duration_minutes,
+            "action": validated.action,
+            "title": validated.title,
+            "participants": [p.model_dump() for p in validated.participants],
+            "duration_minutes": validated.duration_minutes,
             "preferred_time_range": validated.preferred_time_range,
-            "timezone":             validated.timezone,
-            "context":              validated.context,
-            "meeting_id":           validated.meeting_id,
-            "transcript":           validated.transcript,
-            "organizer_email":      validated.organizer_email,
-            "location":             validated.location,
-            "session_id":           input_data.get("session_id"),
-            "messages":             [],
-            "requires_approval":    False,
+            "timezone": validated.timezone,
+            "context": validated.context,
+            "meeting_id": validated.meeting_id,
+            "transcript": validated.transcript,
+            "organizer_email": validated.organizer_email,
+            "location": validated.location,
+            "session_id": input_data.get("session_id"),
+            "messages": [],
+            "requires_approval": False,
         }
 
-        graph  = self.get_subgraph()
+        graph = self.get_subgraph()
         result: MeetingState = graph.invoke(state_input)
 
         # Map → output schema
         action_items_raw = result.get("action_items") or []
         from .schemas import ActionItem
+
         action_items = [
             (a if isinstance(a, ActionItem) else ActionItem(**a))
             for a in action_items_raw
         ]
 
         output: Dict[str, Any] = {
-            "status":            "success" if not result.get("error") else "error",
-            "action":            validated.action,
-            "meeting_id":        result.get("meeting_id"),
+            "status": "success" if not result.get("error") else "error",
+            "action": validated.action,
+            "meeting_id": result.get("meeting_id"),
             "result": {
-                "availability":   result.get("availability", {}),
-                "free_slots":     result.get("free_slots", []),
-                "briefing":       result.get("briefing_doc"),
+                "availability": result.get("availability", {}),
+                "free_slots": result.get("free_slots", []),
+                "briefing": result.get("briefing_doc"),
                 "followup_email": result.get("followup_email"),
             },
-            "summary":           result.get("meeting_summary") or result.get("briefing_doc"),
-            "agenda":            result.get("agenda_items", []),
-            "action_items":      [a.model_dump() for a in action_items],
-            "proposed_slots":    result.get("proposed_slots", []),
-            "calendar_link":     result.get("calendar_link"),
+            "summary": result.get("meeting_summary") or result.get("briefing_doc"),
+            "agenda": result.get("agenda_items", []),
+            "action_items": [a.model_dump() for a in action_items],
+            "proposed_slots": result.get("proposed_slots", []),
+            "calendar_link": result.get("calendar_link"),
             "requires_approval": result.get("requires_approval", False),
-            "message":           (result.get("messages") or [{}])[-1].content
-                                  if result.get("messages") else None,
-            "error":             result.get("error"),
+            "message": (result.get("messages") or [{}])[-1].content
+            if result.get("messages")
+            else None,
+            "error": result.get("error"),
         }
 
         return self.validate_output(output)

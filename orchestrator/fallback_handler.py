@@ -17,7 +17,7 @@ from typing import Any, Dict, Optional
 logger = logging.getLogger(__name__)
 
 _MAX_RETRIES = 3
-_BACKOFF_BASE = 0.5   # seconds
+_BACKOFF_BASE = 0.5  # seconds
 
 
 class FallbackHandler:
@@ -30,9 +30,9 @@ class FallbackHandler:
         self,
         error: Exception,
         agent_name: str,
-        action:     str,
-        payload:    Dict[str, Any],
-        attempt:    int = 1,
+        action: str,
+        payload: Dict[str, Any],
+        attempt: int = 1,
     ) -> Dict[str, Any]:
         """
         Determine fallback strategy based on error type and attempt count.
@@ -42,7 +42,10 @@ class FallbackHandler:
         """
         logger.warning(
             "[FallbackHandler] Agent='%s' action='%s' attempt=%d error=%s",
-            agent_name, action, attempt, error,
+            agent_name,
+            action,
+            attempt,
+            error,
         )
 
         # Strategy 1: retry (first 2 attempts)
@@ -51,10 +54,10 @@ class FallbackHandler:
             logger.info("Backoff %.1fs before retry %d", wait, attempt + 1)
             time.sleep(wait)
             return {
-                "status":             "retry",
-                "retry_recommended":  True,
-                "message":            f"Transient error — retrying (attempt {attempt + 1}).",
-                "fallback_agent":     None,
+                "status": "retry",
+                "retry_recommended": True,
+                "message": f"Transient error — retrying (attempt {attempt + 1}).",
+                "fallback_agent": None,
             }
 
         # Strategy 2: rule-based fallback to simpler action
@@ -62,26 +65,26 @@ class FallbackHandler:
         if fallback:
             logger.info("Falling back to %s", fallback)
             return {
-                "status":            "fallback",
+                "status": "fallback",
                 "retry_recommended": False,
-                "message":           f"Primary action failed; using fallback: {fallback}.",
-                "fallback_agent":    fallback,
+                "message": f"Primary action failed; using fallback: {fallback}.",
+                "fallback_agent": fallback,
             }
 
         # Strategy 3: graceful error response
         self._notify_ops(agent_name, action, error)
         return {
-            "status":            "failed",
+            "status": "failed",
             "retry_recommended": False,
-            "message":           f"Agent '{agent_name}' is unavailable. Please try again later.",
-            "fallback_agent":    None,
-            "error":             str(error),
+            "message": f"Agent '{agent_name}' is unavailable. Please try again later.",
+            "fallback_agent": None,
+            "error": str(error),
         }
 
     def _get_fallback_action(self, agent_name: str, action: str) -> Optional[str]:
         """Map failed agent/action to a simpler alternative."""
         _fallback_map: Dict[str, str] = {
-            "meetings_communication:schedule":  "meetings_communication:brief",
+            "meetings_communication:schedule": "meetings_communication:brief",
             "vendor_management:full_assessment": "vendor_management:find_best",
         }
         return _fallback_map.get(f"{agent_name}:{action}")
@@ -89,10 +92,16 @@ class FallbackHandler:
     def _notify_ops(self, agent_name: str, action: str, error: Exception) -> None:
         """Send a Slack alert to ops channel (mock)."""
         try:
-            from agents.communication.tools.slack_tool import SlackNotifierTool, SlackInput
-            SlackNotifierTool().execute(SlackInput(
-                channel="#ops-alerts",
-                message=f":red_circle: Agent `{agent_name}` ({action}) failed after retries: `{error}`",
-            ))
+            from agents.communication.tools.slack_tool import (
+                SlackNotifierTool,
+                SlackInput,
+            )
+
+            SlackNotifierTool().execute(
+                SlackInput(
+                    channel="#ops-alerts",
+                    message=f":red_circle: Agent `{agent_name}` ({action}) failed after retries: `{error}`",
+                )
+            )
         except Exception:
-            pass   # never let the fallback itself raise
+            pass  # never let the fallback itself raise

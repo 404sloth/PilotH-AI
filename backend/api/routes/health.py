@@ -2,8 +2,6 @@
 
 from fastapi import APIRouter
 from pydantic import BaseModel
-import sqlite3
-import os
 
 router = APIRouter()
 
@@ -17,7 +15,8 @@ class HealthResponse(BaseModel):
 @router.get("", response_model=HealthResponse, summary="Health check")
 def health_check():
     """Returns system health status including database connectivity."""
-    from integrations.data_warehouse.sqlite_client import DB_PATH, get_db_connection
+    from integrations.data_warehouse.sqlite_client import get_db_connection
+
     db_status = "ok"
     try:
         with get_db_connection() as conn:

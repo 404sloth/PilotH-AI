@@ -34,7 +34,11 @@ class ToolRegistry:
         self._registry.setdefault(agent_name, [])
         existing_names = {t.name for t in self._registry[agent_name]}
         if tool.name in existing_names:
-            logger.debug("Tool '%s' already registered for agent '%s' — skipping.", tool.name, agent_name)
+            logger.debug(
+                "Tool '%s' already registered for agent '%s' — skipping.",
+                tool.name,
+                agent_name,
+            )
             return
         self._registry[agent_name].append(tool)
         logger.info("Registered tool '%s' for agent '%s'.", tool.name, agent_name)
@@ -49,4 +53,6 @@ class ToolRegistry:
 
     def list_all_tools(self) -> Dict[str, List[str]]:
         """Return agent → tool-name mapping for observability."""
-        return {agent: [t.name for t in tools] for agent, tools in self._registry.items()}
+        return {
+            agent: [t.name for t in tools] for agent, tools in self._registry.items()
+        }

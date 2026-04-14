@@ -6,8 +6,7 @@ Mock uses SQLite calendar_events table; swap for googleapiclient in production.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional
+from typing import List, Optional
 
 from pydantic import BaseModel, Field
 from tools.base_tool import StructuredTool
@@ -15,23 +14,24 @@ from tools.base_tool import StructuredTool
 
 # ─── Create Event ─────────────────────────────────────────────────────────────
 
+
 class CalendarCreateInput(BaseModel):
-    title:       str               = Field(..., description="Event title")
-    attendee_emails: List[str]     = Field(..., description="List of attendee emails")
-    start_time:  str               = Field(..., description="ISO 8601 start datetime")
-    end_time:    str               = Field(..., description="ISO 8601 end datetime")
-    timezone:    str               = Field("UTC")
-    description: Optional[str]    = None
-    location:    Optional[str]    = None
+    title: str = Field(..., description="Event title")
+    attendee_emails: List[str] = Field(..., description="List of attendee emails")
+    start_time: str = Field(..., description="ISO 8601 start datetime")
+    end_time: str = Field(..., description="ISO 8601 end datetime")
+    timezone: str = Field("UTC")
+    description: Optional[str] = None
+    location: Optional[str] = None
     organizer_email: Optional[str] = None
 
 
 class CalendarCreateOutput(BaseModel):
-    created:       bool
-    event_id:      Optional[str] = None
+    created: bool
+    event_id: Optional[str] = None
     calendar_link: Optional[str] = None
-    has_external:  bool          = False   # True if non-company emails present
-    message:       str           = ""
+    has_external: bool = False  # True if non-company emails present
+    message: str = ""
 
 
 class GoogleCalendarCreateTool(StructuredTool):
@@ -40,6 +40,7 @@ class GoogleCalendarCreateTool(StructuredTool):
     Mock: stores in SQLite calendar_events; stub ready for Google Calendar API.
     Sets has_external=True if any attendee email is outside company domain.
     """
+
     name: str = "google_calendar_create"
     description: str = (
         "Create a calendar event and send invites to all attendees. "
@@ -49,10 +50,14 @@ class GoogleCalendarCreateTool(StructuredTool):
 
     def execute(self, inp: CalendarCreateInput) -> CalendarCreateOutput:
         from integrations.data_warehouse.meeting_db import (
-            get_person_by_email, create_calendar_event,
+            get_person_by_email,
+            create_calendar_event,
         )
+
         COMPANY_DOMAIN = "company.com"
-        external = [e for e in inp.attendee_emails if not e.endswith(f"@{COMPANY_DOMAIN}")]
+        external = [
+            e for e in inp.attendee_emails if not e.endswith(f"@{COMPANY_DOMAIN}")
+        ]
         event_id = f"GCAL-{uuid.uuid4().hex[:8].upper()}"
 
         # Store for each resolved person
@@ -75,31 +80,34 @@ class GoogleCalendarCreateTool(StructuredTool):
             event_id=event_id,
             calendar_link=f"https://calendar.google.com/event?eid={event_id}",
             has_external=bool(external),
-            message=f"Event '{inp.title}' created for {len(inp.attendee_emails)} attendees." +
-                    (f" External attendees detected: {external}" if external else ""),
+            message=f"Event '{inp.title}' created for {len(inp.attendee_emails)} attendees."
+            + (f" External attendees detected: {external}" if external else ""),
         )
 
 
 # ─── Availability ─────────────────────────────────────────────────────────────
 
+
 class AvailabilityInput(BaseModel):
-    attendee_emails: List[str] = Field(..., description="Emails to check availability for")
-    from_time:       str       = Field(..., description="Start of window (ISO 8601)")
-    to_time:         str       = Field(..., description="End of window (ISO 8601)")
+    attendee_emails: List[str] = Field(
+        ..., description="Emails to check availability for"
+    )
+    from_time: str = Field(..., description="Start of window (ISO 8601)")
+    to_time: str = Field(..., description="End of window (ISO 8601)")
 
 
 class BusyBlock(BaseModel):
-    email:      str
+    email: str
     start_time: str
-    end_time:   str
-    title:      Optional[str] = None
+    end_time: str
+    title: Optional[str] = None
 
 
 class AvailabilityOutput(BaseModel):
-    checked:     List[str]
-    not_found:   List[str]
+    checked: List[str]
+    not_found: List[str]
     busy_blocks: List[BusyBlock]
-    summary:     str
+    summary: str
 
 
 class GoogleCalendarAvailabilityTool(StructuredTool):
@@ -107,12 +115,18 @@ class GoogleCalendarAvailabilityTool(StructuredTool):
     Fetch busy/free calendar blocks for a list of attendees from the database.
     Stub for Google Calendar FreeBusy API.
     """
+
     name: str = "google_calendar_availability"
-    description: str = "Fetch free/busy calendar status for attendees within a given time window."
+    description: str = (
+        "Fetch free/busy calendar status for attendees within a given time window."
+    )
     args_schema: type[BaseModel] = AvailabilityInput
 
     def execute(self, inp: AvailabilityInput) -> AvailabilityOutput:
-        from integrations.data_warehouse.meeting_db import get_person_by_email, get_busy_blocks
+        from integrations.data_warehouse.meeting_db import (
+            get_person_by_email,
+            get_busy_blocks,
+        )
 
         busy_blocks: List[BusyBlock] = []
         checked, not_found = [], []
@@ -125,12 +139,14 @@ class GoogleCalendarAvailabilityTool(StructuredTool):
             checked.append(email)
             blocks = get_busy_blocks(person["id"], inp.from_time, inp.to_time)
             for b in blocks:
-                busy_blocks.append(BusyBlock(
-                    email=email,
-                    start_time=b["start_time"],
-                    end_time=b["end_time"],
-                    title=b.get("title"),
-                ))
+                busy_blocks.append(
+                    BusyBlock(
+                        email=email,
+                        start_time=b["start_time"],
+                        end_time=b["end_time"],
+                        title=b.get("title"),
+                    )
+                )
 
         return AvailabilityOutput(
             checked=checked,

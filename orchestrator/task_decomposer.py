@@ -45,13 +45,16 @@ class TaskDecomposer:
         except Exception as e:
             logger.warning("LLM decomposition failed (%s), returning single task.", e)
             from orchestrator.intent_parser import IntentParser
+
             intent = IntentParser(self.config).parse(message, context)
-            return [{
-                "agent":    intent["agent"],
-                "action":   intent["action"],
-                "params":   intent.get("params", {}),
-                "priority": "medium",
-            }]
+            return [
+                {
+                    "agent": intent["agent"],
+                    "action": intent["action"],
+                    "params": intent.get("params", {}),
+                    "priority": "medium",
+                }
+            ]
 
     def _llm_decompose(
         self,
@@ -62,7 +65,7 @@ class TaskDecomposer:
         from llm.model_factory import get_llm
         from langchain_core.messages import HumanMessage
 
-        llm    = get_llm(temperature=0.0)
+        llm = get_llm(temperature=0.0)
         prompt = f"""You are a task decomposition engine. Break the user request into up to {max_tasks} independent subtasks.
 
 Available agents: vendor_management, meetings_communication
@@ -77,9 +80,9 @@ Return ONLY valid JSON array:
 ]
 If only one task, return a single-element array."""
 
-        resp   = llm.invoke([HumanMessage(content=prompt)])
-        raw    = resp.content.strip().strip("```json").strip("```").strip()
-        tasks  = json.loads(raw)
+        resp = llm.invoke([HumanMessage(content=prompt)])
+        raw = resp.content.strip().strip("```json").strip("```").strip()
+        tasks = json.loads(raw)
         if not isinstance(tasks, list):
             raise ValueError("LLM did not return a list")
         return tasks[:max_tasks]

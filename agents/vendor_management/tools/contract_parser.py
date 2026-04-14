@@ -12,31 +12,33 @@ from tools.base_tool import StructuredTool
 
 
 class ContractParserInput(BaseModel):
-    vendor_id:          Optional[str] = Field(None, description="Internal vendor ID")
-    contract_reference: Optional[str] = Field(None, description="Specific contract reference number")
+    vendor_id: Optional[str] = Field(None, description="Internal vendor ID")
+    contract_reference: Optional[str] = Field(
+        None, description="Specific contract reference number"
+    )
 
 
 class ContractSummary(BaseModel):
     contract_reference: str
-    vendor_name:        str
-    vendor_id:          str
-    effective_date:     Optional[str]
-    expiration_date:    Optional[str]
-    total_value:        Optional[float]
-    currency:           str
-    payment_terms:      Optional[str]
-    auto_renewal:       bool
+    vendor_name: str
+    vendor_id: str
+    effective_date: Optional[str]
+    expiration_date: Optional[str]
+    total_value: Optional[float]
+    currency: str
+    payment_terms: Optional[str]
+    auto_renewal: bool
     termination_clause: Optional[str]
-    renewal_terms:      Optional[str]
-    deliverables:       List[str]
-    conditions:         List[str]
-    summary:            str
+    renewal_terms: Optional[str]
+    deliverables: List[str]
+    conditions: List[str]
+    summary: str
 
 
 class ContractParserOutput(BaseModel):
-    found:    bool
+    found: bool
     contract: Optional[ContractSummary] = None
-    message:  str = ""
+    message: str = ""
 
 
 class ContractParserTool(StructuredTool):
@@ -56,7 +58,9 @@ class ContractParserTool(StructuredTool):
         from integrations.data_warehouse.vendor_db import get_contract_details
 
         if not validated_input.vendor_id and not validated_input.contract_reference:
-            return ContractParserOutput(found=False, message="Must provide vendor_id or contract_reference.")
+            return ContractParserOutput(
+                found=False, message="Must provide vendor_id or contract_reference."
+            )
 
         data = get_contract_details(
             vendor_id=validated_input.vendor_id,

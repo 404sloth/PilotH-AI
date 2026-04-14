@@ -43,8 +43,16 @@ def seed(db_path: str, reset: bool = False) -> None:
 
     # Verify counts
     from integrations.data_warehouse.sqlite_client import get_db_connection
+
     with get_db_connection() as conn:
-        for table in ["vendors", "persons", "meetings", "calendar_events", "contracts", "milestones"]:
+        for table in [
+            "vendors",
+            "persons",
+            "meetings",
+            "calendar_events",
+            "contracts",
+            "milestones",
+        ]:
             try:
                 cur = conn.execute(f"SELECT COUNT(*) FROM {table}")
                 count = cur.fetchone()[0]
@@ -57,8 +65,10 @@ def seed(db_path: str, reset: bool = False) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="PilotH Database Seeder")
-    parser.add_argument("--reset", action="store_true", help="Drop existing data before seeding")
-    parser.add_argument("--db",    default="",           help="Override database path")
+    parser.add_argument(
+        "--reset", action="store_true", help="Drop existing data before seeding"
+    )
+    parser.add_argument("--db", default="", help="Override database path")
     args = parser.parse_args()
     seed(args.db, reset=args.reset)
 
