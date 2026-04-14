@@ -5,30 +5,106 @@ description = "PilotH is an AI-powered platform for managing vendor relationship
 authors = [
     { name = "Anil Yadav", email = "thekartikanil@gmail.com" }
 ]
-readme = "README.md"
-requires-python = ">=3.11"
-dependencies = []
-
 [dependency-groups]
 dev = [
-    "ruff",
-    "pre-commit"
+    "ruff>=0.4.0",
+    "pre-commit>=3.7.0"
 ]
 
-# Ruff configuration
+# =========================
+# Ruff: Core Configuration
+# =========================
 [tool.ruff]
 line-length = 88
+indent-width = 4
 target-version = "py311"
-exclude = [".git", "__pycache__", "build", "dist", ".venv"]
 
+# Explicit control of scanning scope
+include = ["pyproject.toml", "src/**/*.py", "tests/**/*.py"]
+
+exclude = [
+    ".git",
+    ".mypy_cache",
+    ".pytest_cache",
+    ".ruff_cache",
+    "__pycache__",
+    "build",
+    "dist",
+    ".venv",
+    "venv",
+    "node_modules"
+]
+
+# Respect gitignore strictly
+respect-gitignore = true
+
+# =========================
+# Linting Strategy
+# =========================
 [tool.ruff.lint]
-select = ["E", "F", "I", "B", "UP", "C90"]
-ignore = ["E203", "E501"]
 
+# Core + curated strict rules
+select = [
+    "E",    # pycodestyle errors
+    "F",    # pyflakes
+    "I",    # import sorting (isort)
+    "B",    # bugbear (real-world bugs)
+    "UP",   # pyupgrade
+    "C90",  # complexity
+    "N",    # naming conventions
+    "SIM",  # simplifications
+    "RET",  # return patterns
+    "ARG",  # unused arguments
+    "PTH",  # pathlib enforcement
+]
+
+# Explicitly ignored (intentional)
+ignore = [
+    "E203",   # conflicts with formatter
+    "E501",   # handled by formatter
+    "B008",   # function calls in defaults (sometimes intentional)
+]
+
+fixable = ["ALL"]
+unfixable = []
+
+# Safer unused variable handling
+dummy-variable-rgx = "^(_+|(_[a-zA-Z0-9_]*))$"
+
+# =========================
+# Per-file rule exceptions
+# =========================
+[tool.ruff.lint.per-file-ignores]
+
+"__init__.py" = ["E402", "F401"]  # allow imports + re-exports
+"tests/**/*.py" = ["S101", "ARG", "FBT"]  # allow asserts, unused args in tests
+
+# =========================
+# Complexity control
+# =========================
+[tool.ruff.lint.mccabe]
+max-complexity = 10
+
+# =========================
+# Import sorting behavior
+# =========================
+[tool.ruff.lint.isort]
+known-first-party = ["your_project_name"]
+combine-as-imports = true
+force-single-line = false
+
+# =========================
+# Formatting (Black parity)
+# =========================
 [tool.ruff.format]
 quote-style = "double"
 indent-style = "space"
 line-ending = "lf"
+skip-magic-trailing-comma = false
+docstring-code-format = true
 
-[tool.ruff.lint.mccabe]
-max-complexity = 10
+# =========================
+# Optional: stricter future mode
+# =========================
+[tool.ruff]
+preview = true
