@@ -21,6 +21,7 @@
 .venv/bin/python3 Scripts/register_tools.py --validate
 .venv/bin/python3 Scripts/register_agents.py --validate
 
+
 # Dev server
 ./Scripts/deploy.sh
 
@@ -29,3 +30,36 @@
 
 # Production
 ./Scripts/deploy.sh --prod
+
+
+
+
+
+
+
+
+
+
+
+git commit -m "improvement in vendor management and commu
+nication"
+ruff.....................................................................Failed
+- hook id: ruff
+- exit code: 1
+- files were modified by this hook
+
+tests/integration/test_agent_chain.py:68:5: RET505 Unnecessary `else` after `return` statement
+tests/integration/test_agent_chain.py:566:1: E402 Module level import not at top of file
+tests/integration/test_orchestrator.py:541:1: E402 Module level import not at top of file
+tests/test_improvements.py:164:13: B007 Loop control variable `agent_key` not used within loop body
+tests/test_improvements.py:168:17: B007 Loop control variable `action_key` not used within loop body
+tests/test_improvements.py:267:16: SIM118 Use `key in dict` instead of `key in dict.keys()`
+tests/test_improvements.py:316:16: SIM118 Use `key in dict` instead of `key in dict.keys()`
+Found 40 errors (33 fixed, 7 remaining).
+No fixes available (4 hidden fixes can be enabled with the `--unsafe-fixes` option).
+
+ruff-format..............................................................Failed
+- hook id: ruff-format
+- files were modified by this hook
+
+3 files reformatted, 2 files left unchanged

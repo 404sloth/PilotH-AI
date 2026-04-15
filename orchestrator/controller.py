@@ -41,7 +41,7 @@ class OrchestratorController:
         context: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """
-        Process a user message end-to-end.
+        Process a user message end-to-end with advanced intent parsing.
 
         Args:
             message:    Natural language user input
@@ -49,19 +49,46 @@ class OrchestratorController:
             context:    Optional additional context dict
 
         Returns:
-            Dict with result, agent used, and session_id
+            Dict with result, agent used, session_id, and intent confidence
         """
+        from observability.logger import get_logger
+        from observability.pii_sanitizer import PIISanitizer
+        
         session_id = session_id or str(uuid.uuid4())
         session = self.session_store.get_or_create(session_id)
+        
+        otel_logger = get_logger("orchestrator")
+        
+        # Sanitize message before logging
+        safe_message = PIISanitizer.sanitize_string(message)
         session.add_message("user", message)
 
-        # 1. Parse intent
-        from orchestrator.intent_parser import IntentParser
+        # 1. Parse intent with advanced parser
+        from orchestrator.advanced_intent_parser import AdvancedIntentParser
 
-        intent = IntentParser(self.config).parse(message, session.context)
+        intent = AdvancedIntentParser(self.config).parse(
+            safe_message,
+            context=PIISanitizer.sanitize_dict(context or {}),
+            conversation_history=session.get_conversation_history() if hasattr(session, 'get_conversation_history') else None
+        )
+
+        otel_logger.info(
+            "Intent parsed",
+            agent="orchestrator",
+            action="intent_parsing",
+            data={
+                "agent": intent.get("agent"),
+                "action": intent.get("action"),
+                "confidence": intent.get("confidence"),
+            }
+        )
 
         logger.info(
-            "[%s] Intent: %s → agent=%s", session_id, intent["action"], intent["agent"]
+            "[%s] Intent: %s → agent=%s (confidence: %.2f)",
+            session_id,
+            intent.get("action"),
+            intent.get("agent"),
+            intent.get("confidence", 0),
         )
 
         # 2. Route to agent
@@ -80,7 +107,11 @@ class OrchestratorController:
         )
         self.global_ctx.append_to_list(
             f"session:{session_id}:results",
-            {"intent": intent, "result_keys": list(result.keys())},
+            {
+                "intent": intent,
+                "result_keys": list(result.keys()),
+                "confidence": intent.get("confidence"),
+            },
             agent="orchestrator",
             session_id=session_id,
         )

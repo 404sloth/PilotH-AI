@@ -43,39 +43,37 @@ class MeetingSummarizerTool(StructuredTool):
     args_schema: type[BaseModel] = SummarizerInput
 
     def execute(self, inp: SummarizerInput) -> SummarizerOutput:
-        prompt = f"""You are an expert meeting analyst. Analyse the following transcript and return ONLY valid JSON.
-
-Meeting: {inp.meeting_title or "N/A"}
-Attendees: {", ".join(inp.attendees) or "Unknown"}
-Duration: {inp.duration_mins or "N/A"} minutes
-
-Transcript:
-{inp.transcript[:4000]}
-
-Return JSON:
-{{
-  "executive_summary": "<3-4 sentences>",
-  "key_decisions": ["<decision 1>", ...],
-  "action_items": [{{"description": "...", "assignee": "...", "due_date": "YYYY-MM-DD", "priority": "medium"}}],
-  "risks": ["<risk 1>", ...],
-  "follow_up_needed": true/false,
-  "sentiment": "positive|neutral|concerns_raised"
-}}"""
+        from orchestrator.system_prompts import get_prompt, AgentType, get_system_prompt
+        from observability.pii_sanitizer import PIISanitizer
+        
+        # Sanitize input before LLM call
+        sanitized_transcript = PIISanitizer.sanitize_string(inp.transcript)
+        sanitized_attendees = [PIISanitizer.sanitize_string(a) for a in inp.attendees]
+        
+        prompt = get_prompt(
+            "meeting_summary",
+            transcript=sanitized_transcript,
+            meeting_title=inp.meeting_title or "N/A",
+        )
 
         try:
             from llm.model_factory import get_llm
-            from langchain_core.messages import HumanMessage
+            from langchain_core.messages import HumanMessage, SystemMessage
 
-            llm = get_llm(temperature=0.0)
-            resp = llm.invoke([HumanMessage(content=prompt)]).content.strip()
+            llm = get_llm(temperature=0.0, max_tokens=2000)
+            
+            # Add system context
+            system_msg = SystemMessage(content=get_system_prompt(AgentType.COMMUNICATION))
+            
+            resp = llm.invoke([system_msg, HumanMessage(content=prompt)]).content.strip()
             resp = resp.strip("```json").strip("```").strip()
             data = json.loads(resp)
             return SummarizerOutput(
                 executive_summary=data.get("executive_summary", ""),
-                key_decisions=data.get("key_decisions", []),
+                key_decisions=data.get("decisions", data.get("key_decisions", [])),
                 action_items=[ActionItemRaw(**a) for a in data.get("action_items", [])],
                 risks=data.get("risks", []),
-                follow_up_needed=data.get("follow_up_needed", True),
+                follow_up_needed=data.get("requires_followup", data.get("follow_up_needed", True)),
                 sentiment=data.get("sentiment", "neutral"),
             )
         except Exception:
