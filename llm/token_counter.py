@@ -18,7 +18,7 @@ _PRICING: Dict[str, Dict[str, float]] = {
     "gpt-4o-mini": {"input": 0.00015, "output": 0.0006},
     "gpt-4-turbo": {"input": 0.01, "output": 0.03},
     "llama-3.1-8b-instant": {"input": 0.0001, "output": 0.0001},  # Groq
-    "llama3": {"input": 0.0, "output": 0.0},  # Ollama (local = free)
+    "qwen2.5:3b": {"input": 0.0, "output": 0.0},  # Ollama (local = free)
 }
 
 

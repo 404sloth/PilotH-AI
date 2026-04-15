@@ -263,7 +263,7 @@ PilotH/
 ```bash
 # Python 3.11+ (project uses .venv with Python 3.13)
 # Ollama running locally (for LLM): https://ollama.ai
-ollama pull llama3
+ollama pull qwen2.5:3b
 ```
 
 ### Setup
@@ -971,7 +971,7 @@ GROQ_MODEL=llama-3.1-8b-instant
 
 # Ollama (local, always available as fallback)
 OLLAMA_BASE_URL=http://localhost:11434
-OLLAMA_MODEL=llama3
+OLLAMA_MODEL=qwen2.5:3b
 
 # Database
 SQLITE_DB_PATH=pilot_db.sqlite
@@ -1366,7 +1366,7 @@ curl https://ollama.ai/install.sh | sh
 ollama serve &
 
 # 4. Pull a model (first time takes ~5 min)
-ollama pull llama3
+ollama pull qwen2.5:3b
 
 # Verify Ollama is running:
 curl http://localhost:11434/api/tags  # Should return model list
@@ -1765,7 +1765,7 @@ curl http://localhost:11434/api/tags
 ollama serve &
 
 # Pull a model
-ollama pull llama3
+ollama pull qwen2.5:3b
 
 # Verify
 curl http://localhost:11434/api/tags
@@ -1816,7 +1816,7 @@ LLM_PRIMARY=groq
 GROQ_API_KEY=gsk_...
 
 # Or force Ollama with smaller model
-OLLAMA_MODEL=neural-chat  # lighter than llama3
+OLLAMA_MODEL=neural-chat  # lighter than qwen2.5:3b
 
 # Check what models are available
 ollama list

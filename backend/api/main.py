@@ -108,11 +108,15 @@ def create_app() -> FastAPI:
     from backend.api.routes.vendor_routes import router as vendor_router
     from backend.api.routes.human_loop_routes import router as hitl_router
     from backend.api.routes.websocket_routes import router as websocket_router
+    from backend.api.routes.knowledge_base_routes import router as kb_router
+    from backend.api.routes.reports_simulations_routes import router as reports_sim_router
 
     app.include_router(health_router, prefix="/health", tags=["Health"])
     app.include_router(agent_router, prefix="/agents", tags=["Agents"])
     app.include_router(vendor_router, prefix="/vendors", tags=["Vendor Management"])
     app.include_router(hitl_router, prefix="/hitl", tags=["Human-in-the-Loop"])
+    app.include_router(kb_router, prefix="/kb", tags=["Knowledge Base"])
+    app.include_router(reports_sim_router, prefix="/reports", tags=["Reports & Simulations"])
     app.include_router(websocket_router, tags=["WebSocket"])
 
     return app

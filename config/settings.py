@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     ollama_base_url: str = Field(
         "http://localhost:11434", description="Ollama server URL"
     )
-    ollama_model: str = Field("llama3", description="Ollama model name")
+    ollama_model: str = Field("qwen2.5:3b", description="Ollama model name")
 
     # ── Database ────────────────────────────────────────────
     sqlite_db_path: str = Field(

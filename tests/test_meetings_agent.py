@@ -440,7 +440,7 @@ try:
     tc = TokenCounter()
     tc.record("gpt-4o", 100, 50)
     tc.record("gpt-4o", 200, 100)
-    tc.record("llama3", 500, 200)
+    tc.record("qwen2.5:3b", 500, 200)
     totals = tc.totals()
     check(
         "TokenCounter — total_tokens",

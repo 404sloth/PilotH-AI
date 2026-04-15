@@ -257,3 +257,7 @@ def mask_phone_for_display(phone: str) -> str:
 # Example usage:
 # >>> sanitize_payload({"email": "user@example.com", "ssn": "123-45-6789"})
 # {"email": "u***@e***.com", "ssn": "***-**-6789"}
+
+def sanitize_data(data):
+    """Sanitize data for safe logging or storage."""
+    return PIISanitizer.sanitize(data)

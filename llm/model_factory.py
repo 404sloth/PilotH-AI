@@ -184,7 +184,7 @@ def _build_ollama(temperature: float, model: Optional[str]) -> BaseChatModel:
         from langchain_ollama import ChatOllama
 
         return ChatOllama(
-            model=model or os.getenv("OLLAMA_MODEL", "llama3"),
+            model=model or os.getenv("OLLAMA_MODEL", "qwen2.5:3b"),
             temperature=temperature,
             base_url=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434"),
             timeout=30,

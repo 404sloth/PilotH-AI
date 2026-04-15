@@ -22,6 +22,10 @@ from .tools import (
     MilestoneTrackerTool,
     VendorScorecardTool,
 )
+from .tools.agreement_expiry_tracker import AgreementExpiryTool
+from .tools.risk_assessment import VendorRiskAssessmentTool
+from .tools.financial_analyzer import VendorFinancialTool
+from .tools.kb_search import KnowledgeBaseSearchTool
 
 
 class VendorManagementAgent(BaseAgent):
@@ -59,6 +63,10 @@ class VendorManagementAgent(BaseAgent):
             SLAMonitorTool(),
             MilestoneTrackerTool(),
             VendorScorecardTool(),
+            AgreementExpiryTool(),
+            VendorRiskAssessmentTool(),
+            VendorFinancialTool(),
+            KnowledgeBaseSearchTool(),
         ]:
             self.tool_registry.register_tool(tool, self.name)
 

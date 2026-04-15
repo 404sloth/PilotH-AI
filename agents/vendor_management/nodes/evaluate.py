@@ -24,7 +24,7 @@ from agents.vendor_management.schemas import VendorState
 from observability.logger import get_logger
 from observability.metrics import get_metrics
 from observability.tracing import get_tracer
-from observability.pii_sanitizer import sanitize_data
+from observability.pii_sanitizer import PIISanitizer
 
 logger = logging.getLogger(__name__)
 otel_logger = get_logger("vendor_management.evaluate")
@@ -120,7 +120,7 @@ def evaluate_node(state: VendorState) -> Dict[str, Any]:
         )
         
         # CRITICAL: Sanitize vendor context before sending to LLM
-        sanitized_context = sanitize_data(vendor_context)
+        sanitized_context = PIISanitizer.sanitize_data(vendor_context)
         
         otel_logger.info(
             "Starting LLM evaluation",

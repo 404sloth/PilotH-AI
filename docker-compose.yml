@@ -66,9 +66,9 @@ services:
       start_period: 30s
     networks:
       - piloth-net
-    # Pull llama3 model on first boot
+    # Pull qwen2.5:3b model on first boot
     entrypoint: ["/bin/sh", "-c",
-      "ollama serve & sleep 5 && ollama pull ${OLLAMA_MODEL:-llama3} && wait"]
+      "ollama serve & sleep 5 && ollama pull ${OLLAMA_MODEL:-qwen2.5:3b} && wait"]
     labels:
       com.piloth.service: "llm"
 

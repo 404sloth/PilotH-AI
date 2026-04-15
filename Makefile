@@ -1,10 +1,11 @@
-.PHONY: help setup install test test-vendor test-meetings test-all clean run run-dev run-test healthcheck db-init db-reset lint format
+.PHONY: help setup install test test-vendor test-meetings test-all clean run run-dev run-test healthcheck db-init db-reset lint format init-system
 
 help:
-	@echo "PilotH — Multi-Agent AI Orchestration Platform"
+	@echo "PilotH — Multi-AI Agent Orchestration Platform"
 	@echo ""
 	@echo "Quick Commands:"
 	@echo "  make setup          - Initial setup (venv + install + db)"
+	@echo "  make init-system    - Full system initialization"
 	@echo "  make run            - Start API server (production)"
 	@echo "  make run-dev        - Start API server (with reload)"
 	@echo "  make test           - Run all tests"
@@ -17,13 +18,18 @@ help:
 	@echo "  make lint           - Run code linting"
 	@echo ""
 
+init-system:
+	@echo "🔧 Initializing PilotH system..."
+	@. .venv/bin/activate && python3 Scripts/init_system.py
+	@echo "✅ System initialization complete"
+
 setup: install db-init
 	@echo "✅ Setup complete! Run: make run-dev"
 
 install:
 	@echo "📦 Installing dependencies..."
 	@test -d .venv || python3 -m venv .venv
-	@. .venv/bin/activate && pip install -q -r requirements.txt
+	@. .venv/bin/activate && uv pip install -q -r requirements.txt
 	@test -f .env || cp config/.env.example .env
 	@echo "✅ Dependencies installed"
 
@@ -64,16 +70,16 @@ healthcheck:
 
 db-init:
 	@echo "🗄️  Initializing database..."
-	@. .venv/bin/activate && python3 << 'EOF'
-from integrations.data_warehouse.sqlite_client import init_db
-init_db(seed=True)
-import sqlite3
-conn = sqlite3.connect("pilot_db.sqlite")
-cursor = conn.cursor()
-cursor.execute("SELECT COUNT(DISTINCT type) FROM sqlite_master WHERE type IN ('table', 'index')")
-count = cursor.fetchone()[0]
-print(f"✅ Database ready ({count} objects)")
-EOF
+	@. .venv/bin/activate && python3 -c "\
+	from integrations.data_warehouse.sqlite_client import init_db; \
+	init_db(seed=True); \
+	import sqlite3; \
+	conn = sqlite3.connect('pilot_db.sqlite'); \
+	cursor = conn.cursor(); \
+	cursor.execute(\"SELECT COUNT(DISTINCT type) FROM sqlite_master WHERE type IN ('table', 'index')\"); \
+	count = cursor.fetchone()[0]; \
+	print(f'✅ Database ready ({count} objects)') \
+	"
 
 db-reset:
 	@echo "⚠️  WARNING: This will delete all data!"
@@ -99,11 +105,11 @@ clean:
 
 lint:
 	@echo "🔍 Linting Python code..."
-	@. .venv/bin/activate && python3 -m pylint agents/ backend/ orchestrator/ --disable=all --enable=E,F 2>/dev/null || echo "Install pylint: pip install pylint"
+	@. .venv/bin/activate && python3 -m pylint agents/ backend/ orchestrator/ --disable=all --enable=E,F 2>/dev/null || echo "Install pylint: uv pip install pylint"
 
 format:
 	@echo "🎨 Formatting code..."
-	@. .venv/bin/activate && python3 -m black . --line-length 100 --quiet 2>/dev/null || echo "Install black: pip install black"
+	@. .venv/bin/activate && python3 -m black . --line-length 100 --quiet 2>/dev/null || echo "Install black: uv pip install black"
 
 # Docker commands (optional)
 docker-build:
@@ -131,26 +137,22 @@ test-coverage:
 
 demo:
 	@echo "🎬 Running interactive demo..."
-	@. .venv/bin/activate && python3 << 'EOF'
-import sys
-from integrations.data_warehouse.sqlite_client import init_db
-from backend.services.agent_registry import initialise_agents
-from config.settings import Settings
-from orchestrator.controller import OrchestratorController
-
-init_db()
-settings = Settings()
-initialise_agents(settings)
-controller = OrchestratorController(settings)
-
-# Example request
-result = controller.handle(
-    message="Find the best cloud infrastructure vendors for $100k budget",
-    session_id="demo-session"
-)
-
-print(f"\n✅ Demo complete!")
-print(f"   Agent: {result['intent']['agent']}")
-print(f"   Action: {result['intent']['action']}")
-print(f"   Status: {result['result'].get('status')}")
-EOF
+	@. .venv/bin/activate && python3 -c "\
+	import sys; \
+	from integrations.data_warehouse.sqlite_client import init_db; \
+	from backend.services.agent_registry import initialise_agents; \
+	from config.settings import Settings; \
+	from orchestrator.controller import OrchestratorController; \
+	init_db(); \
+	settings = Settings(); \
+	initialise_agents(settings); \
+	controller = OrchestratorController(settings); \
+	result = controller.handle( \
+		message='Find the best cloud infrastructure vendors for $$100k budget', \
+		session_id='demo-session' \
+	); \
+	print('\n✅ Demo complete!'); \
+	print(f\"   Agent: {result['intent']['agent']}\"); \
+	print(f\"   Action: {result['intent']['action']}\"); \
+	print(f\"   Status: {result['result'].get('status')}\") \
+	"
