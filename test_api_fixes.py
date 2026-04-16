@@ -13,7 +13,7 @@ def test_imports():
     try:
         from backend.api.dependencies import get_settings
         from orchestrator.controller import OrchestratorController
-        from orchestrator.advanced_intent_parser import AdvancedIntentParser
+        from orchestrator.intent_parser import IntentParser
         print("✓ All imports successful")
         return True
     except Exception as e:
@@ -24,10 +24,10 @@ def test_agent_hint_logic():
     """Test that agent_hint is properly handled."""
     try:
         from backend.api.dependencies import get_settings
-        from orchestrator.advanced_intent_parser import AdvancedIntentParser
+        from orchestrator.intent_parser import IntentParser
 
         settings = get_settings()
-        parser = AdvancedIntentParser(settings)
+        parser = IntentParser(settings)
 
         # Test with agent_hint
         result = parser.parse(

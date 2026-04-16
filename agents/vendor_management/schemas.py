@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field
 
 
 class VendorAction(str, Enum):
+    SEARCH_VENDORS = "search_vendors"  # Browse/list vendors across services or categories
     FIND_BEST = "find_best"  # Match best vendor(s) for a new project requirement
     EVALUATE = "evaluate"  # Score & assess a specific existing vendor
     MONITOR_SLA = "monitor_sla"  # Check SLA compliance
@@ -101,6 +102,9 @@ class VendorManagementOutput(BaseModel):
     vendor_id: Optional[str] = None
     vendor_name: Optional[str] = None
 
+    # For SEARCH_VENDORS
+    vendors: List[Dict[str, Any]] = Field(default_factory=list)
+
     # For FIND_BEST
     ranked_vendors: List[Dict[str, Any]] = Field(default_factory=list)
     top_recommendation: Optional[str] = None  # vendor_id
@@ -145,6 +149,7 @@ class VendorState(TypedDict, total=False):
     project_id: Optional[str]
 
     # ---- Intermediate state populated by nodes ---
+    vendors: List[Dict[str, Any]]
     vendor_records: List[Dict[str, Any]]  # from vendor_search / vendor_matcher
     ranked_vendors: List[Dict[str, Any]]  # scored candidates
     top_recommendation: Optional[str]

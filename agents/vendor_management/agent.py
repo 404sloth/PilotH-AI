@@ -133,6 +133,7 @@ class VendorManagementAgent(BaseAgent):
             "vendor_id": result.get("vendor_id"),
             "vendor_name": result.get("vendor_details", {}).get("name")
             or validated_in.vendor_name,
+            "vendors": result.get("vendors", []),
             "ranked_vendors": result.get("ranked_vendors", []),
             "top_recommendation": result.get("top_recommendation"),
             "overall_score": result.get("overall_score"),

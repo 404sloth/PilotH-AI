@@ -23,10 +23,74 @@ def summarize_node(state: VendorState) -> Dict[str, Any]:
     """
     action = state.get("action", "full_assessment")
 
+    if action == "search_vendors":
+        return _summarize_vendor_search(state)
     if action == "find_best":
         return _summarize_find_best(state)
     else:
         return _summarize_assessment(state)
+
+
+# ---------------------------------------------------------------------------
+# SEARCH_VENDORS summary
+# ---------------------------------------------------------------------------
+
+
+def _summarize_vendor_search(state: VendorState) -> Dict[str, Any]:
+    vendors = state.get("vendors") or []
+    service_filter = state.get("service_required")
+    country = state.get("country")
+
+    if not vendors:
+        scope = service_filter or "the requested filters"
+        return {
+            "llm_summary": f"No vendors found matching {scope}.",
+            "recommendations": [
+                "Try broadening the service or country filters",
+                "Check whether additional vendors need to be onboarded",
+            ],
+            "messages": [AIMessage(content="No vendors found.")],
+        }
+
+    category_counts: Dict[str, int] = {}
+    service_counts: Dict[str, int] = {}
+    for vendor in vendors:
+        category = vendor.get("category") or "Unknown"
+        category_counts[category] = category_counts.get(category, 0) + 1
+        for service in vendor.get("services", []):
+            service_counts[service] = service_counts.get(service, 0) + 1
+
+    top_services = sorted(service_counts.items(), key=lambda item: (-item[1], item[0]))[:5]
+    top_categories = sorted(category_counts.items(), key=lambda item: (-item[1], item[0]))[:3]
+    summary_bits = ", ".join(f"{name} ({count})" for name, count in top_services)
+    category_bits = ", ".join(f"{name} ({count})" for name, count in top_categories)
+
+    location_text = f" in {country}" if country else ""
+    if service_filter:
+        summary = (
+            f"Found {len(vendors)} vendor(s){location_text} that provide '{service_filter}'. "
+            f"Top matches include {', '.join(v.get('name', 'Unknown') for v in vendors[:5])}. "
+            f"Related service coverage in this result set: {summary_bits or service_filter}."
+        )
+    else:
+        summary = (
+            f"Found {len(vendors)} vendor(s){location_text} across {len(category_counts)} categories. "
+            f"Leading categories are {category_bits or 'not available'}. "
+            f"Most represented services are {summary_bits or 'not available'}."
+        )
+
+    recommendations = [
+        "Use the vendor list to narrow down by service, region, or tier",
+        "Run a best-vendor search once you know the target service and budget",
+    ]
+    if not service_filter:
+        recommendations.append("Add a service filter to get a tighter shortlist")
+
+    return {
+        "llm_summary": summary,
+        "recommendations": recommendations,
+        "messages": [AIMessage(content=summary)],
+    }
 
 
 # ---------------------------------------------------------------------------

@@ -1,158 +1,163 @@
-.PHONY: help setup install test test-vendor test-meetings test-all clean run run-dev run-test healthcheck db-init db-reset lint format init-system
+.PHONY: help setup install test test-vendor test-meetings test-all clean run run-dev run-test healthcheck db-init db-reset lint format init-system shell
+
+# Detect OS
+ifeq ($(OS),Windows_NT)
+    PYTHON = python
+    VENV_BIN = .venv\Scripts
+else
+    PYTHON = python3
+    VENV_BIN = .venv/bin
+endif
+
+PIP = $(VENV_BIN)/pip
+UVICORN = $(VENV_BIN)/uvicorn
 
 help:
 	@echo "PilotH — Multi-AI Agent Orchestration Platform"
 	@echo ""
 	@echo "Quick Commands:"
-	@echo "  make setup          - Initial setup (venv + install + db)"
-	@echo "  make init-system    - Full system initialization"
-	@echo "  make run            - Start API server (production)"
-	@echo "  make run-dev        - Start API server (with reload)"
+	@echo "  make setup          - Initial setup"
+	@echo "  make run-dev        - Start dev server"
+	@echo "  make run            - Start production server"
 	@echo "  make test           - Run all tests"
-	@echo "  make test-vendor    - Vendor Management tests only"
-	@echo "  make test-meetings  - Communication Agent tests only"
-	@echo "  make healthcheck    - Check API and LLM status"
-	@echo "  make db-init        - Initialize and seed database"
-	@echo "  make db-reset       - Delete database (DANGEROUS)"
-	@echo "  make clean          - Clean temporary files"
-	@echo "  make lint           - Run code linting"
+	@echo "  make clean          - Clean temp files"
 	@echo ""
 
-init-system:
-	@echo "🔧 Initializing PilotH system..."
-	@. .venv/bin/activate && python3 Scripts/init_system.py
-	@echo "✅ System initialization complete"
+# ----------------------
+# SETUP
+# ----------------------
 
 setup: install db-init
 	@echo "✅ Setup complete! Run: make run-dev"
 
 install:
 	@echo "📦 Installing dependencies..."
-	@test -d .venv || python3 -m venv .venv
-	@. .venv/bin/activate && uv pip install -q -r requirements.txt
-	@test -f .env || cp config/.env.example .env
+	@test -d .venv || $(PYTHON) -m venv .venv
+	@$(PYTHON) -m pip install -r requirements.txt
+	@$(PYTHON) -c "import shutil, os; shutil.copy('config/.env.example', '.env') if not os.path.exists('.env') else None"
 	@echo "✅ Dependencies installed"
+
+init-system:
+	@echo "🔧 Initializing system..."
+	@$(PYTHON) Scripts/init_system.py
+	@echo "✅ Done"
+
+# ----------------------
+# RUN
+# ----------------------
+
+run:
+	@echo "🚀 Starting production server..."
+	@$(UVICORN) backend.api.main:app --host 0.0.0.0 --port 8000
+
+run-dev:
+	@echo "🚀 Starting dev server..."
+	@$(PYTHON) -m dotenv run -- $(UVICORN) backend.api.main:app --reload --port 8000
+
+run-test:
+	@echo "🚀 Starting test server..."
+	@$(UVICORN) backend.api.main:app --host 127.0.0.1 --port 9999
+
+# ----------------------
+# TESTING
+# ----------------------
 
 test: test-all
 
 test-all: db-init
 	@echo "🧪 Running all tests..."
-	@. .venv/bin/activate && python3 tests/test_vendor_management.py && \
-	  python3 tests/test_meetings_agent.py
+	@$(PYTHON) tests/test_vendor_management.py
+	@$(PYTHON) tests/test_meetings_agent.py
 	@echo "✅ All tests passed"
 
 test-vendor: db-init
-	@echo "🧪 Running Vendor Management tests..."
-	@. .venv/bin/activate && python3 tests/test_vendor_management.py
+	@$(PYTHON) tests/test_vendor_management.py
 
 test-meetings: db-init
-	@echo "🧪 Running Communication Agent tests..."
-	@. .venv/bin/activate && python3 tests/test_meetings_agent.py
+	@$(PYTHON) tests/test_meetings_agent.py
 
-run:
-	@echo "🚀 Starting API server (production)..."
-	@. .venv/bin/activate && uvicorn backend.api.main:app --host 0.0.0.0 --port 8000
-
-run-dev:
-	@echo "🚀 Starting API server (development with reload)..."
-	@set -a && . .env && set +a && . .venv/bin/activate && uvicorn backend.api.main:app --reload --port 8000
-
-run-test:
-	@echo "🚀 Starting test server..."
-	@. .venv/bin/activate && uvicorn backend.api.main:app --host 127.0.0.1 --port 9999
-
-healthcheck:
-	@echo "🏥 Checking API health..."
-	@curl -s http://localhost:8000/health | python3 -m json.tool || echo "❌ API not responding"
-	@echo ""
-	@echo "🏥 Checking Ollama..."
-	@curl -s http://localhost:11434/api/tags | python3 -m json.tool || echo "⚠️  Ollama not running"
+# ----------------------
+# DATABASE
+# ----------------------
 
 db-init:
-	@echo "🗄️  Initializing database..."
-	@. .venv/bin/activate && python3 -c "\
-	from integrations.data_warehouse.sqlite_client import init_db; \
-	init_db(seed=True); \
-	import sqlite3; \
-	conn = sqlite3.connect('pilot_db.sqlite'); \
-	cursor = conn.cursor(); \
-	cursor.execute(\"SELECT COUNT(DISTINCT type) FROM sqlite_master WHERE type IN ('table', 'index')\"); \
-	count = cursor.fetchone()[0]; \
-	print(f'✅ Database ready ({count} objects)') \
-	"
+	@echo "🗄️ Initializing database..."
+	@$(PYTHON) -c "\
+from integrations.data_warehouse.sqlite_client import init_db; \
+init_db(seed=True); \
+import sqlite3; \
+conn = sqlite3.connect('pilot_db.sqlite'); \
+cursor = conn.cursor(); \
+cursor.execute(\"SELECT COUNT(*) FROM sqlite_master\"); \
+print(f'✅ Database ready ({cursor.fetchone()[0]} objects)')"
 
 db-reset:
-	@echo "⚠️  WARNING: This will delete all data!"
-	@read -p "Are you sure? (y/N) " -n 1 -r; \
-	echo; \
-	if [[ $$REPLY =~ ^[Yy]$$ ]]; then \
-	  rm -f pilot_db.sqlite; \
-	  echo "✅ Database deleted"; \
-	else \
-	  echo "Cancelled"; \
-	fi
-
-db-query:
-	@echo "Opening SQLite shell..."
-	@sqlite3 pilot_db.sqlite
-
-clean:
-	@echo "🧹 Cleaning temporary files..."
-	@find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
-	@find . -type f -name "*.pyc" -delete
-	@rm -f .pytest_cache .coverage htmlcov
-	@echo "✅ Cleaned"
-
-lint:
-	@echo "🔍 Linting Python code..."
-	@. .venv/bin/activate && python3 -m pylint agents/ backend/ orchestrator/ --disable=all --enable=E,F 2>/dev/null || echo "Install pylint: uv pip install pylint"
-
-format:
-	@echo "🎨 Formatting code..."
-	@. .venv/bin/activate && python3 -m black . --line-length 100 --quiet 2>/dev/null || echo "Install black: uv pip install black"
-
-# Docker commands (optional)
-docker-build:
-	docker build -t piloth:latest .
-
-docker-run:
-	docker-compose up
-
-# Advanced
-shell:
-	@. .venv/bin/activate && python3
+	@$(PYTHON) -c "\
+import os; \
+c=input('Delete DB? (y/N): '); \
+if c.lower()=='y': \
+ os.remove('pilot_db.sqlite') if os.path.exists('pilot_db.sqlite') else None; \
+ print('✅ Deleted'); \
+else: print('Cancelled')"
 
 db-shell:
-	@sqlite3 pilot_db.sqlite
+	@$(PYTHON) -c "import sqlite3; conn=sqlite3.connect('pilot_db.sqlite'); print('Opened DB')"
 
-logs:
-	@tail -f /tmp/piloth.log
+# ----------------------
+# HEALTHCHECK
+# ----------------------
+
+healthcheck:
+	@$(PYTHON) -c "\
+import requests, json; \
+try: print(json.dumps(requests.get('http://localhost:8000/health').json(), indent=2)); \
+except: print('❌ API not responding'); \
+print(); \
+try: print(json.dumps(requests.get('http://localhost:11434/api/tags').json(), indent=2)); \
+except: print('⚠️ Ollama not running')"
+
+# ----------------------
+# CLEAN
+# ----------------------
+
+clean:
+	@echo "🧹 Cleaning..."
+	@$(PYTHON) -c "\
+import shutil, os; \
+[shutil.rmtree(d, ignore_errors=True) for d in ['.pytest_cache','htmlcov']]; \
+[os.remove(f) for f in ['.coverage'] if os.path.exists(f)]"
+	@echo "✅ Cleaned"
+
+# ----------------------
+# LINT / FORMAT
+# ----------------------
+
+lint:
+	@$(PYTHON) -m pylint agents backend orchestrator || echo "Install pylint"
+
+format:
+	@$(PYTHON) -m black . || echo "Install black"
 
 lint-fix:
-	@. .venv/bin/activate && python3 -m black . --line-length 100 2>/dev/null
-	@. .venv/bin/activate && python3 -m isort . 2>/dev/null || true
+	@$(PYTHON) -m black .
+	@$(PYTHON) -m isort . || true
 
-test-coverage:
-	@. .venv/bin/activate && python3 -m pytest tests/ --cov --cov-report=html
+# ----------------------
+# UTILITIES
+# ----------------------
+
+shell:
+	@$(PYTHON)
 
 demo:
-	@echo "🎬 Running interactive demo..."
-	@. .venv/bin/activate && python3 -c "\
-	import sys; \
-	from integrations.data_warehouse.sqlite_client import init_db; \
-	from backend.services.agent_registry import initialise_agents; \
-	from config.settings import Settings; \
-	from orchestrator.controller import OrchestratorController; \
-	init_db(); \
-	settings = Settings(); \
-	initialise_agents(settings); \
-	controller = OrchestratorController(settings); \
-	result = controller.handle( \
-		message='Find the best cloud infrastructure vendors for $$100k budget', \
-		session_id='demo-session' \
-	); \
-	print('\n✅ Demo complete!'); \
-	print(f\"   Agent: {result['intent']['agent']}\"); \
-	print(f\"   Action: {result['intent']['action']}\"); \
-	print(f\"   Status: {result['result'].get('status')}\") \
-	"
+	@$(PYTHON) -c "\
+from integrations.data_warehouse.sqlite_client import init_db; \
+from backend.services.agent_registry import initialise_agents; \
+from config.settings import Settings; \
+from orchestrator.controller import OrchestratorController; \
+init_db(); \
+settings = Settings(); \
+initialise_agents(settings); \
+controller = OrchestratorController(settings); \
+result = controller.handle(message='Find vendors under 100k', session_id='demo'); \
+print(result)"

@@ -170,26 +170,29 @@ class VendorPerformanceAggregator:
         try:
             cursor = db_connection.cursor()
             
-            # Query projects with vendor involvement
+            # Query the current schema directly. Projects belong to a vendor via projects.vendor_id.
             query = """
             SELECT 
-                p.project_id,
-                p.project_name,
-                p.start_date,
-                p.end_date,
+                p.id as project_id,
+                p.name as project_name,
+                p.started_at as start_date,
+                p.due_at as end_date,
                 p.budget,
-                p.actual_cost,
-                p.quality_score,
-                p.client_satisfaction,
-                p.on_time,
-                COUNT(DISTINCT m.milestone_id) as milestone_count,
+                NULL as actual_cost,
+                vp.quality_score,
+                vp.avg_client_rating as client_satisfaction,
+                CASE
+                    WHEN SUM(CASE WHEN m.status = 'delayed' THEN 1 ELSE 0 END) > 0 THEN 0
+                    ELSE 1
+                END as on_time,
+                COUNT(DISTINCT m.id) as milestone_count,
                 SUM(CASE WHEN m.status = 'delayed' THEN 1 ELSE 0 END) as delayed_count
             FROM projects p
-            LEFT JOIN milestones m ON p.project_id = m.project_id
-            LEFT JOIN project_vendors pv ON p.project_id = pv.project_id
-            WHERE pv.vendor_id = ?
-            GROUP BY p.project_id
-            ORDER BY p.end_date DESC
+            LEFT JOIN milestones m ON p.id = m.project_id
+            LEFT JOIN vendor_performance vp ON vp.vendor_id = p.vendor_id
+            WHERE p.vendor_id = ?
+            GROUP BY p.id, p.name, p.started_at, p.due_at, p.budget, vp.quality_score, vp.avg_client_rating
+            ORDER BY p.due_at DESC
             LIMIT 100
             """
             

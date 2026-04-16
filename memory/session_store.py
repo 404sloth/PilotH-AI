@@ -29,6 +29,13 @@ class Session:
         self.messages.append({"role": role, "content": content, "ts": time.time()})
         self.last_active = time.time()
 
+    def get_conversation_history(self, last_n: int = 10) -> List[Dict[str, Any]]:
+        """Return recent messages in a parser-friendly format."""
+        return [
+            {"role": msg["role"], "content": msg["content"]}
+            for msg in self.messages[-last_n:]
+        ]
+
     def set_context(self, key: str, value: Any) -> None:
         self.context[key] = value
         self.last_active = time.time()

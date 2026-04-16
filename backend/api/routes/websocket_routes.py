@@ -54,9 +54,97 @@ async def websocket_endpoint(
             # Wait for client message (heartbeat or explicit message)
             try:
                 data = await websocket.receive_json()
-                # Handle ping / client messages if needed
-                if isinstance(data, dict) and data.get("type") == "ping":
+                if not isinstance(data, dict):
+                    await websocket.send_json({"status": "ERROR", "message": "Invalid message payload"})
+                    continue
+
+                message_type = data.get("type")
+                if message_type == "ping":
                     await websocket.send_json({"type": "pong"})
+                    continue
+
+                if message_type == "query":
+                    from backend.api.dependencies import get_settings
+                    from orchestrator.controller import OrchestratorController
+                    import asyncio
+
+                    prompt = (data.get("message") or "").strip()
+                    if not prompt:
+                        await websocket.send_json({"status": "ERROR", "message": "Message is required"})
+                        continue
+
+                    thread_id = data.get("thread_id") or session_id
+                    agent_hint = data.get("agent_hint")
+                    controller = OrchestratorController(get_settings())
+                    result = await asyncio.to_thread(
+                        controller.handle,
+                        message=prompt,
+                        session_id=thread_id,
+                        context={
+                            "conversation_id": thread_id,
+                            "user_message_metadata": (
+                                {"agent_hint": agent_hint} if agent_hint else {}
+                            ),
+                        }
+                        if thread_id
+                        else {"user_message_metadata": {"agent_hint": agent_hint}}
+                        if agent_hint
+                        else {},
+                        agent_hint=agent_hint,
+                    )
+                    await websocket.send_json(
+                        {
+                            "status": "SUCCESS",
+                            "message": result.get("response", ""),
+                            "thread_id": result.get("conversation_id") or thread_id,
+                            "session_id": result.get("session_id"),
+                            "agent": result.get("metadata", {}).get("agent"),
+                            "action": result.get("metadata", {}).get("action"),
+                            "data": result.get("data", {}),
+                            "metadata": result.get("metadata", {}),
+                        }
+                    )
+                    continue
+
+                if message_type in {"approve", "deny"}:
+                    task_id = data.get("task_id")
+                    if not task_id:
+                        await websocket.send_json(
+                            {
+                                "status": "ERROR",
+                                "message": "task_id is required for approve/deny actions",
+                            }
+                        )
+                        continue
+
+                    from human_loop.manager import get_hitl_manager
+                    import asyncio
+
+                    manager = get_hitl_manager()
+                    approved = message_type == "approve"
+                    try:
+                        await asyncio.to_thread(
+                            manager.resume,
+                            task_id=task_id,
+                            approved=approved,
+                            feedback=data.get("feedback", ""),
+                        )
+                        await websocket.send_json(
+                            {
+                                "status": "SUCCESS",
+                                "message": "Approval accepted" if approved else "Approval denied",
+                                "task_id": task_id,
+                            }
+                        )
+                    except Exception as exc:
+                        await websocket.send_json(
+                            {"status": "ERROR", "message": str(exc), "task_id": task_id}
+                        )
+                    continue
+
+                await websocket.send_json(
+                    {"status": "ERROR", "message": f"Unsupported message type: {message_type}"}
+                )
             except Exception:
                 # Client disconnected or sent invalid data
                 break

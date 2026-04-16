@@ -59,14 +59,20 @@ class OrchestratorController:
 
         session_id = session_id or str(uuid.uuid4())
         session = self.session_store.get_or_create(session_id)
+        runtime_context = dict(context or {})
+        user_message_metadata = dict(runtime_context.pop("user_message_metadata", {}) or {})
+        if agent_hint:
+            user_message_metadata.setdefault("agent_hint", agent_hint)
 
         # Get or create conversation
-        conversation_id = context.get("conversation_id") if context else None
+        conversation_id = runtime_context.get("conversation_id")
         if conversation_id:
             conversation = ConversationManager.get_conversation(conversation_id)
             if not conversation:
-                conversation = Conversation.create_new({"session_id": session_id})
-                conversation_id = conversation.id
+                conversation = Conversation.create_new(
+                    {"session_id": session_id},
+                    conversation_id=conversation_id,
+                )
         else:
             conversation = Conversation.create_new({"session_id": session_id})
             conversation_id = conversation.id
@@ -74,18 +80,25 @@ class OrchestratorController:
         otel_logger = get_logger("orchestrator")
 
         # Add user message to conversation
-        conversation.add_message("user", message, {"session_id": session_id})
+        conversation.add_message(
+            "user",
+            message,
+            {
+                "session_id": session_id,
+                **user_message_metadata,
+            },
+        )
 
         # Sanitize message before logging
         safe_message = PIISanitizer.sanitize_string(message)
         session.add_message("user", message)
 
         # 1. Parse intent with advanced parser
-        from orchestrator.advanced_intent_parser import AdvancedIntentParser
+        from orchestrator.intent_parser import IntentParser, get_tool_description, TOOL_REGISTRY
 
-        intent = AdvancedIntentParser(self.config).parse(
-            safe_message,
-            context=PIISanitizer.sanitize_dict(context or {}),
+        intent = IntentParser(self.config).parse(
+            message,
+            context=PIISanitizer.sanitize_dict(runtime_context),
             conversation_history=session.get_conversation_history() if hasattr(session, 'get_conversation_history') else None,
             agent_hint=agent_hint,
         )
@@ -115,7 +128,7 @@ class OrchestratorController:
         result = AgentRouter().route(
             agent_name=intent["agent"],
             action=intent["action"],
-            payload={**intent.get("params", {}), **(context or {})},
+            payload={**intent.get("params", {}), **runtime_context},
             session_id=session_id,
         )
 
@@ -151,8 +164,18 @@ class OrchestratorController:
             "response": assistant_response,
             "data": formatted_result.get("data", {}),
             "metadata": {
+                "original_query": message,
+                "sanitized_query": safe_message,
                 "agent": intent.get("agent"),
                 "action": intent.get("action"),
+                "agent_description": TOOL_REGISTRY.get(intent.get("agent"), {}).get("agent_description"),
+                "action_description": get_tool_description(intent.get("agent"), intent.get("action")),
+                "tool_descriptions": {
+                    action_name: action_info.get("description", "")
+                    for action_name, action_info in TOOL_REGISTRY.get(intent.get("agent"), {}).get("actions", {}).items()
+                },
+                "intent_reasoning": intent.get("reasoning"),
+                "params": intent.get("params", {}),
                 "confidence": intent.get("confidence"),
                 "token_usage": self.token_counter.totals(),
             }
@@ -179,13 +202,11 @@ class OrchestratorController:
             # Generate a summary based on the result structure
             response_text = self._generate_response_summary(result, agent, action)
 
-        # Sanitize the response
-        safe_response = PIISanitizer.sanitize_string(response_text)
-
         # Filter data for output - remove internal fields
         filtered_data = {}
         important_keys = {
             "vendor_management": [
+                "vendors",
                 "ranked_vendors",
                 "top_recommendation",
                 "overall_score",
@@ -205,23 +226,29 @@ class OrchestratorController:
         keys_to_include = important_keys.get(agent, [])
         for key in keys_to_include:
             if key in result:
-                filtered_data[key] = PIISanitizer.sanitize_output(result[key])
+                filtered_data[key] = result[key]
 
         return {
-            "response": safe_response,
+            "response": response_text,
             "data": filtered_data
         }
 
     def _generate_response_summary(self, result: Dict[str, Any], agent: str, action: str) -> str:
         """Generate a human-readable summary when no explicit response is available."""
         if agent == "vendor_management":
-            if action == "find_best":
+            if action == "search_vendors":
                 vendors = result.get("vendors", [])
                 if vendors:
-                    top_vendor = vendors[0] if vendors else {}
-                    return f"I found {len(vendors)} vendors matching your criteria. The top recommendation is {top_vendor.get('name', 'Unknown')} with a score of {top_vendor.get('overall_score', 'N/A')}."
-                else:
-                    return "No vendors found matching your criteria. Try adjusting your requirements."
+                    names = ", ".join(v.get("name", "Unknown") for v in vendors[:5])
+                    return f"I found {len(vendors)} vendors matching your request. Sample matches: {names}."
+                return "No vendors found matching your request. Try broadening the filters."
+
+            if action == "find_best":
+                vendors = result.get("ranked_vendors", [])
+                if vendors:
+                    top_vendor = vendors[0]
+                    return f"I found {len(vendors)} ranked vendors. The top recommendation is {top_vendor.get('name', 'Unknown')} with a fit score of {top_vendor.get('fit_score', 'N/A')}."
+                return "No vendors found matching your criteria. Try adjusting your requirements."
             
             elif action == "full_assessment":
                 return f"Completed assessment for vendor. Key findings: {result.get('summary', 'See detailed results below.')}"

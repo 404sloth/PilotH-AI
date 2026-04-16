@@ -1,0 +1,65 @@
+{
+  "id": "9142f38b-d2d1-4fb5-8104-32705d738f3f",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Find the best cloud vendor within $50,000 budget",
+      "timestamp": "2026-04-16T23:16:00.588088",
+      "metadata": {
+        "session_id": "9142f38b-d2d1-4fb5-8104-32705d738f3f"
+      }
+    },
+    {
+      "role": "assistant",
+      "content": "For 'cloud_hosting', Acme Cloud Solutions is the top recommendation with a fit score of 89.5/100. They lead on quality (91.0/100) and on-time delivery (96%). 3 vendors evaluated in total.",
+      "timestamp": "2026-04-16T23:16:00.825921",
+      "metadata": {
+        "agent": "vendor_management",
+        "action": "find_best",
+        "confidence": 0.9,
+        "session_id": "9142f38b-d2d1-4fb5-8104-32705d738f3f"
+      }
+    },
+    {
+      "role": "user",
+      "content": "please schedule a meeting with anil and some developer tomorrow 2pm",
+      "timestamp": "2026-04-16T23:31:07.500028",
+      "metadata": {
+        "session_id": "9142f38b-d2d1-4fb5-8104-32705d738f3f"
+      }
+    },
+    {
+      "role": "assistant",
+      "content": "Meeting scheduled successfully. Details: See below.",
+      "timestamp": "2026-04-16T23:31:30.641876",
+      "metadata": {
+        "agent": "meetings_communication",
+        "action": "schedule",
+        "confidence": 0.9,
+        "session_id": "9142f38b-d2d1-4fb5-8104-32705d738f3f"
+      }
+    },
+    {
+      "role": "user",
+      "content": "hi what you can do for me",
+      "timestamp": "2026-04-16T23:35:32.677906",
+      "metadata": {
+        "session_id": "16b87a14-45d7-43cc-b258-1f9690022365"
+      }
+    },
+    {
+      "role": "assistant",
+      "content": "Meeting scheduled successfully. Details: See below.",
+      "timestamp": "2026-04-16T23:35:43.196865",
+      "metadata": {
+        "agent": "meetings_communication",
+        "action": "schedule",
+        "confidence": 0.9,
+        "session_id": "16b87a14-45d7-43cc-b258-1f9690022365"
+      }
+    }
+  ],
+  "created_at": "2026-04-16T23:16:00.196217",
+  "updated_at": "2026-04-16T23:35:43.196876",
+  "metadata": {}
+}

@@ -129,11 +129,15 @@ class Conversation:
         self.save()
 
     @classmethod
-    def create_new(cls, metadata: Optional[Dict[str, Any]] = None) -> 'Conversation':
+    def create_new(
+        cls,
+        metadata: Optional[Dict[str, Any]] = None,
+        conversation_id: Optional[str] = None,
+    ) -> 'Conversation':
         """Create a new conversation."""
         now = datetime.now()
         conversation = cls(
-            id=str(uuid.uuid4()),
+            id=conversation_id or str(uuid.uuid4()),
             messages=[],
             created_at=now,
             updated_at=now,

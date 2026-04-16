@@ -243,12 +243,8 @@ security_tools, compliance_officer. Return similar if not exact match."""
                 detected_service = service
                 break
 
-        if not detected_service:
-            detected_service = "cloud_hosting"  # Default fallback
-
         # Budget extraction
-        budget_match = re.search(r"\$?(\d+[,\d]*)/month", query_lower)
-        budget = float(budget_match.group(1).replace(",", "")) if budget_match else None
+        budget = self._parse_budget(query)
 
         # Quality/criteria extraction
         min_quality = 75.0
@@ -278,14 +274,14 @@ security_tools, compliance_officer. Return similar if not exact match."""
             country = "EU"
 
         return ParsedVendorRequirements(
-            service_tag=detected_service,
+            service_tag=detected_service or "",
             budget_monthly=budget,
             min_quality_score=min_quality,
             min_on_time_rate=min_on_time,
             min_avg_client_rating=min_rating,
             required_tier=tier,
             country=country,
-            confidence=0.6,
+            confidence=0.6 if detected_service else 0.35,
             requires_clarification=not detected_service,
             clarification_request=(
                 "Could you specify which service you need? "
@@ -301,9 +297,16 @@ security_tools, compliance_officer. Return similar if not exact match."""
             return float(budget_value)
         if isinstance(budget_value, str):
             import re
-            match = re.search(r"(\d+[,\d]*)", budget_value)
+            normalized = budget_value.lower().replace(",", "")
+            match = re.search(r"\$?\s*(\d+(?:\.\d+)?)\s*(k|m)?", normalized)
             if match:
-                return float(match.group(1).replace(",", ""))
+                amount = float(match.group(1))
+                suffix = match.group(2)
+                if suffix == "k":
+                    amount *= 1000
+                elif suffix == "m":
+                    amount *= 1_000_000
+                return amount
         return None
 
     def generate_clarification_request(

@@ -25,13 +25,14 @@ from .nodes import (
 def _route_after_fetch(state: VendorState) -> str:
     """
     Conditional routing after fetch_vendor:
+    - SEARCH_VENDORS: jump straight to summarize (discovery already complete)
     - FIND_BEST: jump straight to summarize (ranking already done by VendorMatcherTool)
     - Error:     jump to summarize to surface the error gracefully
     - Default:   proceed through evaluate → risk_detect → summarize
     """
     if state.get("error"):
         return "summarize"
-    if state.get("action") == "find_best":
+    if state.get("action") in {"search_vendors", "find_best"}:
         return "summarize"
     return "evaluate"
 

@@ -20,10 +20,58 @@ def fetch_vendor_node(state: VendorState) -> Dict[str, Any]:
     """
     action = state.get("action", "full_assessment")
 
+    if action == "search_vendors":
+        return _run_vendor_discovery(state)
     if action == "find_best":
         return _run_matcher(state)
     else:
         return _run_search(state)
+
+
+def _run_vendor_discovery(state: VendorState) -> Dict[str, Any]:
+    from agents.vendor_management.tools.vendor_search import (
+        VendorSearchInput,
+        VendorSearchTool,
+    )
+
+    limit = state.get("top_n") or 50
+    if limit < 10:
+        limit = 10
+
+    tool = VendorSearchTool()
+    result = tool.execute(
+        VendorSearchInput(
+            vendor_name=state.get("vendor_name"),
+            vendor_id=state.get("vendor_id"),
+            service_tag=state.get("service_required"),
+            country=state.get("country"),
+            limit=min(limit, 50),
+        )
+    )
+
+    if not result.found:
+        scope = state.get("service_required") or "the requested criteria"
+        return {
+            "vendors": [],
+            "requires_human_review": True,
+            "messages": [
+                ToolMessage(
+                    content=f"No vendors found for {scope}.",
+                    tool_call_id="fetch_vendor",
+                )
+            ],
+        }
+
+    vendors = [vendor.model_dump() for vendor in result.vendors]
+    return {
+        "vendors": vendors,
+        "messages": [
+            ToolMessage(
+                content=f"Found {result.count} vendor(s) matching the requested filters.",
+                tool_call_id="fetch_vendor",
+            )
+        ],
+    }
 
 
 def _run_matcher(state: VendorState) -> Dict[str, Any]:

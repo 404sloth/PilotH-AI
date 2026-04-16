@@ -163,45 +163,44 @@ class VendorMatcherTool(StructuredTool):
 
             # Enhance fit scores with historical performance
             enhanced_rows = []
-            db_conn = None
             try:
                 from integrations.data_warehouse.vendor_db import get_db_connection
                 from agents.vendor_management.performance_aggregator import get_aggregator
-                
-                db_conn = get_db_connection()
+
                 aggregator = get_aggregator()
 
-                for row in rows:
-                    original_score = row.get("fit_score", 0)
-                    vendor_id = row["vendor_id"]
-                    vendor_name = row["name"]
+                with get_db_connection() as db_conn:
+                    for row in rows:
+                        original_score = row.get("fit_score", 0)
+                        vendor_id = row["vendor_id"]
+                        vendor_name = row["name"]
 
-                    # Get performance profile
-                    adjusted_score, explanation, confidence = (
-                        aggregator.compute_fit_score_enhancement(
-                            original_score,
-                            vendor_id,
-                            vendor_name,
-                            db_conn,
+                        # Get performance profile
+                        adjusted_score, explanation, confidence = (
+                            aggregator.compute_fit_score_enhancement(
+                                original_score,
+                                vendor_id,
+                                vendor_name,
+                                db_conn,
+                            )
                         )
-                    )
 
-                    row["fit_score"] = adjusted_score
-                    row["performance_explanation"] = explanation
-                    row["performance_confidence"] = confidence
-                    enhanced_rows.append(row)
+                        row["fit_score"] = adjusted_score
+                        row["performance_explanation"] = explanation
+                        row["performance_confidence"] = confidence
+                        enhanced_rows.append(row)
 
-                    otel_logger.debug(
-                        "Enhanced vendor fit score",
-                        agent="vendor_management",
-                        data={
-                            "vendor_id": vendor_id,
-                            "vendor_name": vendor_name,
-                            "original_score": original_score,
-                            "adjusted_score": adjusted_score,
-                            "confidence": confidence,
-                        },
-                    )
+                        otel_logger.debug(
+                            "Enhanced vendor fit score",
+                            agent="vendor_management",
+                            data={
+                                "vendor_id": vendor_id,
+                                "vendor_name": vendor_name,
+                                "original_score": original_score,
+                                "adjusted_score": adjusted_score,
+                                "confidence": confidence,
+                            },
+                        )
 
                 # Re-sort by enhanced fit score
                 enhanced_rows.sort(key=lambda r: r["fit_score"], reverse=True)
@@ -215,9 +214,6 @@ class VendorMatcherTool(StructuredTool):
                     error=str(e),
                 )
                 ranked_rows = rows[:validated_input.top_n]
-            finally:
-                if db_conn:
-                    db_conn.close()
 
             ranked: List[RankedVendor] = []
             for i, r in enumerate(ranked_rows, start=1):

@@ -3,7 +3,7 @@
 Quick verification script for all improvements.
 """
 
-from orchestrator.advanced_intent_parser import AdvancedIntentParser, TOOL_REGISTRY
+from orchestrator.intent_parser import IntentParser, TOOL_REGISTRY
 from orchestrator.system_prompts import get_system_prompt, AgentType
 from tools.validation import validate_tool_execution, ToolExecutionError
 from observability.pii_sanitizer import PIISanitizer

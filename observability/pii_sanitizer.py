@@ -94,10 +94,13 @@ class PIISanitizer:
             return "***@***.***"
 
     @staticmethod
-    def sanitize_phone(phone: str) -> str:
+    def sanitize_phone(phone: Any) -> str:
         """Mask phone number: (123) 456-7890 → (***) ***-7890"""
-        match = PHONE_PATTERN.search(phone)
-        if match:
+        if hasattr(phone, "group"):
+            match = phone
+        else:
+            match = PHONE_PATTERN.search(str(phone))
+        if match and match.lastindex and match.lastindex >= 4 and match.group(4):
             return "***-***-" + match.group(4)[-4:]
         return "***-***-****"
 

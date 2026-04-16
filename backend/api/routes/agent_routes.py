@@ -6,10 +6,9 @@ POST /agents/run — automatically route natural language prompts to appropriate
 
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from typing import List, Dict, Any
 
 router = APIRouter()
 
@@ -35,6 +34,24 @@ class ConversationInfo(BaseModel):
     updated_at: str
     message_count: int
     last_message: str
+    metadata: Dict[str, Any] = {}
+
+
+class CreateThreadResponse(BaseModel):
+    id: str
+    created_at: str
+    updated_at: str
+    message_count: int
+    last_message: str
+    metadata: Dict[str, Any] = {}
+
+
+class HistoryMessage(BaseModel):
+    role: str
+    message: str
+    timestamp: str
+    agent_type: Optional[str] = None
+    action: Optional[str] = None
     metadata: Dict[str, Any] = {}
 
 
@@ -158,3 +175,62 @@ def delete_conversation(conversation_id: str) -> Dict[str, str]:
         raise HTTPException(status_code=404, detail="Conversation not found")
 
     return {"status": "deleted", "conversation_id": conversation_id}
+
+
+@router.post("/threads", response_model=CreateThreadResponse, summary="Create thread")
+def create_thread() -> CreateThreadResponse:
+    """Create an empty conversation thread for chat clients."""
+    from llm.model_factory import Conversation
+
+    conversation = Conversation.create_new()
+    return CreateThreadResponse(
+        id=conversation.id,
+        created_at=conversation.created_at.isoformat(),
+        updated_at=conversation.updated_at.isoformat(),
+        message_count=0,
+        last_message="",
+        metadata=conversation.metadata or {},
+    )
+
+
+@router.get("/history", response_model=List[HistoryMessage], summary="Get thread history")
+def get_history(thread_id: str) -> List[HistoryMessage]:
+    """Return flattened history for a conversation/thread."""
+    from llm.model_factory import ConversationManager
+
+    conversation = ConversationManager.get_conversation(thread_id)
+    if not conversation:
+        return []
+
+    return [
+        HistoryMessage(
+            role=msg.role,
+            message=msg.content,
+            timestamp=msg.timestamp.isoformat(),
+            agent_type=(msg.metadata or {}).get("agent"),
+            action=(msg.metadata or {}).get("action"),
+            metadata=msg.metadata or {},
+        )
+        for msg in conversation.messages
+    ]
+
+
+@router.get("/alerts", summary="List UI alerts")
+def list_alerts() -> List[Dict[str, Any]]:
+    """Return lightweight alerts for the frontend dashboard."""
+    from human_loop.manager import get_hitl_manager
+
+    pending_tasks = get_hitl_manager().get_pending()
+    alerts = []
+    for idx, task in enumerate(pending_tasks, start=1):
+        alerts.append(
+            {
+                "id": idx,
+                "title": f"Approval pending for {task.get('agent_name', 'agent')}",
+                "description": task.get("context", "Human review is required."),
+                "severity": "high" if task.get("risk_score", 0.0) >= 0.8 else "medium",
+                "source": task.get("action", "human_loop"),
+                "resolved": False,
+            }
+        )
+    return alerts

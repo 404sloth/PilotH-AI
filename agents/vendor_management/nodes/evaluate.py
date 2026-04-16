@@ -30,6 +30,14 @@ logger = logging.getLogger(__name__)
 otel_logger = get_logger("vendor_management.evaluate")
 
 
+def _safe_float(value: Any, default: float) -> float:
+    """Convert numeric-ish values safely, tolerating sanitizer placeholders."""
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
 def evaluate_node(state: VendorState) -> Dict[str, Any]:
     """
     Evaluate a single vendor using LLM reasoning over real scorecard data.
@@ -320,12 +328,12 @@ def _evaluate_with_llm(
             sc = vendor_context.get("sla", {})
             ms = vendor_context.get("milestones", {})
             
-            q = float(vc.get("quality_score") or 50)
-            ot = (float(vc.get("on_time_rate") or 0.5)) * 100
-            comm = float(vc.get("communication_score") or 50)
-            cost = float(vc.get("cost_competitiveness") or 50)
-            inno = float(vc.get("innovation_score") or 50)
-            slap = float(sc.get("overall_compliance") or 100)
+            q = _safe_float(vc.get("quality_score") or 50, 50)
+            ot = _safe_float(vc.get("on_time_rate") or 0.5, 0.5) * 100
+            comm = _safe_float(vc.get("communication_score") or 50, 50)
+            cost = _safe_float(vc.get("cost_competitiveness") or 50, 50)
+            inno = _safe_float(vc.get("innovation_score") or 50, 50)
+            slap = _safe_float(sc.get("overall_compliance") or 100, 100)
 
             delayed = ms.get("delayed", 0)
             penalty = min(delayed * 5, 20)
@@ -354,5 +362,4 @@ def _evaluate_with_llm(
                 [f"Needs improvement: {w}" for w in weaknesses],
                 overall,
             )
-
 

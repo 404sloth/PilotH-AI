@@ -13,7 +13,7 @@ import pytest
 
 from config.settings import Settings
 from observability.pii_sanitizer import PIISanitizer
-from orchestrator.advanced_intent_parser import TOOL_REGISTRY, AdvancedIntentParser
+from orchestrator.intent_parser import TOOL_REGISTRY, IntentParser
 from orchestrator.system_prompts import (
     AgentType,
     get_evaluation_prompt,
@@ -34,7 +34,7 @@ def settings():
 
 @pytest.fixture
 def intent_parser(settings):
-    return AdvancedIntentParser(settings)
+    return IntentParser(settings)
 
 
 # ── PII Sanitization Tests ────────────────────────────────────────────────
