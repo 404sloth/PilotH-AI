@@ -1,6 +1,7 @@
 """
 Generic agent execution router.
-POST /agents/{agent_name}/run  — execute any registered agent.
+POST /agents/{agent_name}/run  — execute any registered agent with natural language prompts.
+POST /agents/run — automatically route natural language prompts to appropriate agents.
 """
 
 from __future__ import annotations
@@ -8,14 +9,33 @@ from __future__ import annotations
 from typing import Any, Dict
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
+from typing import List, Dict, Any
 
 router = APIRouter()
+
+
+class AgentRunRequest(BaseModel):
+    prompt: str
+    context: Dict[str, Any] = {}
+    agent_hint: str = ""  # Optional hint about which agent to use
+    conversation_id: str = ""  # Optional conversation ID for continuity
 
 
 class AgentRunResponse(BaseModel):
     agent: str
     result: Dict[str, Any]
     task_id: str = None
+    conversation_id: str = None
+    session_id: str = None
+
+
+class ConversationInfo(BaseModel):
+    id: str
+    created_at: str
+    updated_at: str
+    message_count: int
+    last_message: str
+    metadata: Dict[str, Any] = {}
 
 
 @router.get("", summary="List registered agents")
@@ -28,26 +48,113 @@ def list_agents():
 
 
 @router.post(
-    "/{agent_name}/run", response_model=AgentRunResponse, summary="Run an agent"
+    "/run", response_model=AgentRunResponse, summary="Auto-route natural language prompts"
 )
-def run_agent(agent_name: str, body: Dict[str, Any]):
+def run_auto_agent(request: AgentRunRequest):
     """
-    Execute a named agent with the provided input payload.
+    Automatically route natural language prompts to the appropriate agent.
     
-    Accepts two formats:
-    1. Nested (recommended): {"input": {"action": "find_best", "service_tags": ["cloud"], ...}}
-    2. Flat (backward compat): {"action": "find_best", "service_tags": ["cloud"], ...}
+    The orchestrator will parse the intent from the prompt and route to the best matching agent.
     """
-    from backend.services.agent_registry import get_agent
+    from orchestrator.controller import OrchestratorController
+    from backend.api.dependencies import get_settings
 
-    agent = get_agent(agent_name)
-    if not agent:
-        raise HTTPException(status_code=404, detail=f"Agent '{agent_name}' not found.")
-
+    controller = OrchestratorController(get_settings())
+    
     try:
-        # Auto-detect format: if "input" key exists, use it; otherwise treat entire body as input
-        input_data = body.get("input") if "input" in body else body
-        result = agent.execute(input_data)
-        return AgentRunResponse(agent=agent_name, result=result)
+        # Prepare context with conversation_id
+        context = request.context.copy()
+        if request.conversation_id:
+            context["conversation_id"] = request.conversation_id
+
+        result = controller.handle(
+            message=request.prompt,
+            context=context,
+            agent_hint=request.agent_hint if request.agent_hint else None,
+        )
+
+        return AgentRunResponse(
+            agent=result.get("metadata", {}).get("agent", "unknown"),
+            result={
+                "response": result.get("response", ""),
+                "data": result.get("data", {}),
+                "metadata": result.get("metadata", {})
+            },
+            conversation_id=result.get("conversation_id"),
+            session_id=result.get("session_id"),
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post(
+    "/{agent_name}/run", response_model=AgentRunResponse, summary="Run specific agent with natural language"
+)
+def run_agent(agent_name: str, request: AgentRunRequest):
+    """
+    Execute a named agent with a natural language prompt.
+    
+    The orchestrator will parse the intent, route to appropriate tools, and return formatted results.
+    """
+    from orchestrator.controller import OrchestratorController
+    from backend.api.dependencies import get_settings
+
+    controller = OrchestratorController(get_settings())
+    
+    try:
+        # Prepare context with conversation_id
+        context = request.context.copy()
+        if request.conversation_id:
+            context["conversation_id"] = request.conversation_id
+
+        result = controller.handle(
+            message=request.prompt,
+            context=context,
+            agent_hint=agent_name,  # Use the specified agent as hint
+        )
+
+        return AgentRunResponse(
+            agent=agent_name,
+            result={
+                "response": result.get("response", ""),
+                "data": result.get("data", {}),
+                "metadata": result.get("metadata", {})
+            },
+            conversation_id=result.get("conversation_id"),
+            session_id=result.get("session_id"),
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/conversations", summary="List conversations")
+def list_conversations(limit: int = 50) -> List[ConversationInfo]:
+    """List recent conversations for frontend display."""
+    from llm.model_factory import ConversationManager
+
+    conversations = ConversationManager.list_conversations(limit=limit)
+    return [ConversationInfo(**conv) for conv in conversations]
+
+
+@router.get("/conversations/{conversation_id}", summary="Get conversation")
+def get_conversation(conversation_id: str) -> Dict[str, Any]:
+    """Get a specific conversation with all messages."""
+    from llm.model_factory import ConversationManager
+
+    conversation = ConversationManager.get_conversation(conversation_id)
+    if not conversation:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+    return conversation.to_dict()
+
+
+@router.delete("/conversations/{conversation_id}", summary="Delete conversation")
+def delete_conversation(conversation_id: str) -> Dict[str, str]:
+    """Delete a conversation."""
+    from llm.model_factory import ConversationManager
+
+    success = ConversationManager.delete_conversation(conversation_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+    return {"status": "deleted", "conversation_id": conversation_id}

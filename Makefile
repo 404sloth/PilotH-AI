@@ -55,7 +55,7 @@ run:
 
 run-dev:
 	@echo "🚀 Starting API server (development with reload)..."
-	@. .venv/bin/activate && uvicorn backend.api.main:app --reload --port 8000
+	@set -a && . .env && set +a && . .venv/bin/activate && uvicorn backend.api.main:app --reload --port 8000
 
 run-test:
 	@echo "🚀 Starting test server..."

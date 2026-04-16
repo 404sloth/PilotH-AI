@@ -37,11 +37,14 @@ TOOL_REGISTRY = {
                 "description": "Find and rank best vendors for a specific service with quality/cost/availability filters",
                 "triggers": [
                     "find best vendor",
+                    "best cloud vendor",
+                    "find the best",
                     "best supplier",
                     "compare vendors",
                     "rank vendors",
                     "which vendor is best",
                     "vendor recommendation",
+                    "best vendor",
                 ],
                 "required_params": ["service_required"],
                 "optional_params": ["budget_monthly", "min_quality_score", "required_tier", "country"],
@@ -148,6 +151,29 @@ TOOL_REGISTRY = {
             },
         },
     },
+    "knowledge_base": {
+        "agent_name": "knowledge_base",
+        "agent_description": "Semantic search and retrieval from vendor documents, agreements, and communications",
+        "actions": {
+            "search": {
+                "description": "Search across knowledge base collections using semantic similarity",
+                "triggers": [
+                    "search knowledge base",
+                    "find information about",
+                    "what do we know about",
+                    "look up",
+                    "search for",
+                    "find documents",
+                    "query knowledge",
+                    "information on",
+                    "details about",
+                    "tell me about",
+                ],
+                "required_params": ["query"],
+                "optional_params": ["collection", "limit"],
+            },
+        },
+    },
 }
 
 
@@ -164,6 +190,7 @@ class AdvancedIntentParser:
         message: str,
         context: Optional[Dict[str, Any]] = None,
         conversation_history: Optional[List[Dict[str, str]]] = None,
+        agent_hint: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Parse user message into structured agent + action + params.
@@ -172,6 +199,7 @@ class AdvancedIntentParser:
             message: User natural language request
             context: Current session/user context
             conversation_history: Previous turns for multi-turn awareness
+            agent_hint: Optional hint for which agent to prefer (e.g., "vendor_management")
 
         Returns:
             {
@@ -190,6 +218,17 @@ class AdvancedIntentParser:
             safe_context = PIISanitizer.sanitize_dict(context)
             safe_message = PIISanitizer.sanitize_string(message)
 
+            # If agent_hint provided and valid, use it directly
+            if agent_hint and agent_hint in TOOL_REGISTRY:
+                span.add_event("using_agent_hint", {"agent": agent_hint})
+                result = self._parse_with_agent_hint(safe_message, agent_hint, safe_context)
+                if result:
+                    self.metrics.increment_counter(
+                        "intent_parse.success",
+                        tags={"method": "agent_hint"},
+                    )
+                    return result
+
             try:
                 # Try advanced LLM parsing
                 result = self._llm_parse_advanced(
@@ -202,15 +241,15 @@ class AdvancedIntentParser:
                     span.add_event("llm_parse_success", {"confidence": result.get("confidence")})
                     self.metrics.increment_counter(
                         "intent_parse.success",
-                        attributes={"method": "llm_advanced"},
+                        tags={"method": "llm_advanced"},
                     )
                     return result
 
             except Exception as e:
-                otel_logger.warning("Advanced LLM parsing failed", error=str(e), message=safe_message)
+                otel_logger.warning(f"Advanced LLM parsing failed: {safe_message}", error=str(e))
                 self.metrics.increment_counter(
                     "intent_parse.fallback",
-                    attributes={"reason": "llm_error"},
+                    tags={"reason": "llm_error"},
                 )
 
             # Fallback to keyword-based routing
@@ -218,7 +257,7 @@ class AdvancedIntentParser:
             result = self._keyword_parse(safe_message)
             self.metrics.increment_counter(
                 "intent_parse.success",
-                attributes={"method": "keyword_routing"},
+                tags={"method": "keyword_routing"},
             )
             return result
 
@@ -282,7 +321,7 @@ Return ONLY valid JSON with NO markdown:
         messages.append(HumanMessage(content=f"User request: {message}"))
 
         # Call LLM
-        llm = get_llm(temperature=0.0, max_tokens=1000)
+        llm = get_llm(temperature=0.0)
         response = llm.invoke(messages)
         content = response.content.strip()
 
@@ -306,6 +345,67 @@ Return ONLY valid JSON with NO markdown:
             "confidence": parsed.get("confidence", 0.7),
             "reasoning": parsed.get("reasoning", ""),
         }
+
+    def _parse_with_agent_hint(
+        self,
+        message: str,
+        agent_hint: str,
+        context: Dict[str, Any],
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Parse intent when agent is hinted, focusing on action detection within that agent.
+        """
+        lower = message.lower()
+        agent_info = TOOL_REGISTRY.get(agent_hint, {})
+        
+        # Score actions within the hinted agent
+        scores: Dict[str, int] = {}
+        
+        for action_key, action_info in agent_info.get("actions", {}).items():
+            score = 0
+            for trigger in action_info.get("triggers", []):
+                if trigger.lower() in lower:
+                    score += len(trigger)  # Longer matches score higher
+            
+            if score > 0:
+                scores[action_key] = score
+        
+        # If we found matching actions, use the best one
+        if scores:
+            action = max(scores.items(), key=lambda x: x[1])[0]
+            return {
+                "agent": agent_hint,
+                "action": action,
+                "params": {},
+                "confidence": 0.8,  # Higher confidence for hinted agent
+                "reasoning": f"Agent hinted as '{agent_hint}', matched action by keyword triggers",
+            }
+        
+        # If no clear action match, use the agent's default action
+        default_action = self._get_default_action(agent_hint)
+        if default_action:
+            return {
+                "agent": agent_hint,
+                "action": default_action,
+                "params": {},
+                "confidence": 0.6,
+                "reasoning": f"Agent hinted as '{agent_hint}', using default action",
+            }
+        
+        return None
+
+    def _get_default_action(self, agent: str) -> Optional[str]:
+        """Get the default action for an agent."""
+        agent_info = TOOL_REGISTRY.get(agent, {})
+        actions = agent_info.get("actions", {})
+        
+        # Look for a default action or pick the first one
+        for action_key, action_info in actions.items():
+            if action_info.get("default", False):
+                return action_key
+        
+        # If no default, pick the first action
+        return next(iter(actions.keys()), None)
 
     def _keyword_parse(self, message: str) -> Dict[str, Any]:
         """Fallback keyword-based routing with scoring."""
@@ -336,6 +436,16 @@ Return ONLY valid JSON with NO markdown:
                 "reasoning": f"Matched by keyword triggers",
             }
         
+        # Special-case cheaper fallback for vendor discovery requests
+        if "best" in lower and "vendor" in lower:
+            return {
+                "agent": "vendor_management",
+                "action": "find_best",
+                "params": {},
+                "confidence": 0.4,
+                "reasoning": "Keyword heuristic detected vendor discovery request",
+            }
+
         # Ultimate fallback
         return {
             "agent": "vendor_management",

@@ -24,7 +24,7 @@ from agents.vendor_management.schemas import VendorState
 from observability.logger import get_logger
 from observability.metrics import get_metrics
 from observability.tracing import get_tracer
-from observability.pii_sanitizer import PIISanitizer
+from observability.pii_sanitizer import PIISanitizer, sanitize_data
 
 logger = logging.getLogger(__name__)
 otel_logger = get_logger("vendor_management.evaluate")
@@ -120,7 +120,7 @@ def evaluate_node(state: VendorState) -> Dict[str, Any]:
         )
         
         # CRITICAL: Sanitize vendor context before sending to LLM
-        sanitized_context = PIISanitizer.sanitize_data(vendor_context)
+        sanitized_context = sanitize_data(vendor_context)
         
         otel_logger.info(
             "Starting LLM evaluation",
@@ -145,11 +145,11 @@ def evaluate_node(state: VendorState) -> Dict[str, Any]:
         metrics.record_histogram(
             "vendor_evaluation.duration_ms",
             duration_ms,
-            attributes={"action": action},
+            tags={"action": action},
         )
         metrics.increment_counter(
             "vendor_evaluation.success",
-            attributes={"action": action},
+            tags={"action": action},
         )
         
         otel_logger.info(
@@ -261,11 +261,11 @@ def _evaluate_with_llm(
             metrics.record_histogram(
                 "llm_call.duration_ms",
                 duration_ms,
-                attributes={"model": "vendor_evaluation"},
+                tags={"model": "vendor_evaluation"},
             )
             metrics.increment_counter(
                 "llm_call.success",
-                attributes={"model": "vendor_evaluation"},
+                tags={"model": "vendor_evaluation"},
             )
             
             content = response.content.strip()
@@ -307,7 +307,7 @@ def _evaluate_with_llm(
             # Record failed LLM call
             metrics.increment_counter(
                 "llm_call.failure",
-                attributes={"model": "vendor_evaluation"},
+                tags={"model": "vendor_evaluation"},
             )
             
             span.add_event(

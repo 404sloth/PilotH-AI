@@ -266,16 +266,16 @@ class VendorMatcherTool(StructuredTool):
             metrics.record_histogram(
                 "vendor_matching.duration_ms",
                 duration_ms,
-                attributes={"service_tag": validated_input.service_tag},
+                tags={"service_tag": validated_input.service_tag},
             )
             metrics.record_histogram(
                 "vendor_matching.candidates",
                 len(ranked),
-                attributes={"service_tag": validated_input.service_tag},
+                tags={"service_tag": validated_input.service_tag},
             )
             metrics.increment_counter(
                 "vendor_matching.success",
-                attributes={"service_tag": validated_input.service_tag},
+                tags={"service_tag": validated_input.service_tag},
             )
 
             otel_logger.info(

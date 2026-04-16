@@ -20,29 +20,55 @@ logger = logging.getLogger(__name__)
 
 # ── Patterns for PII detection ────────────────────────────────────────────────
 
-# Email pattern
+# Email pattern (improved)
 EMAIL_PATTERN = re.compile(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b')
 
-# Phone pattern (US format)
-PHONE_PATTERN = re.compile(r'(\+?1[-.\s]?)?\(?([0-9]{3})\)?[-.\s]?([0-9]{3})[-.\s]?([0-9]{4})')
+# Phone pattern (international formats)
+PHONE_PATTERN = re.compile(r'(\+?\d{1,3}[-.\s]?)?\(?(\d{3})\)?[-.\s]?(\d{3})[-.\s]?(\d{4})|\+?\d{10,15}')
 
 # SSN pattern (XXX-XX-XXXX or XXXXXXXXX)
 SSN_PATTERN = re.compile(r'\b\d{3}-\d{2}-\d{4}|\b\d{9}\b')
 
-# Credit card pattern (rough)
-CC_PATTERN = re.compile(r'\b\d{4}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b')
+# Credit card pattern (various formats)
+CC_PATTERN = re.compile(r'\b\d{4}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}|\b\d{4}[\s-]?\d{6}[\s-]?\d{5}\b')
 
-# API key pattern (generic)
-APIKEY_PATTERN = re.compile(r'(api[_-]?key|apikey|token|secret|password|passwd)[\s:]*["\']?([A-Za-z0-9_\-\.]{20,})["\']?', re.IGNORECASE)
+# API key pattern (various formats)
+APIKEY_PATTERN = re.compile(r'(api[_-]?key|apikey|token|secret|password|passwd|auth[_-]?key|bearer|jwt)[\s:=]*["\']?([A-Za-z0-9_\-\.]{20,})["\']?', re.IGNORECASE)
+
+# Bank account pattern
+BANK_PATTERN = re.compile(r'\b\d{8,17}\b')
+
+# IP address pattern
+IP_PATTERN = re.compile(r'\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b')
+
+# URL with sensitive parameters
+URL_PATTERN = re.compile(r'https?://[^\s]*?(password|token|key|secret)[^\s]*', re.IGNORECASE)
+
+# Name pattern (basic - can be improved with NLP)
+NAME_PATTERN = re.compile(r'\b[A-Z][a-z]+ [A-Z][a-z]+\b')
+
+# Address pattern (basic)
+ADDRESS_PATTERN = re.compile(r'\b\d+\s+[A-Za-z0-9\s,.-]+\b')
 
 # ── Sensitive field names ─────────────────────────────────────────────────────
 
 SENSITIVE_FIELDS = {
-    "password", "passwd", "pwd", "secret", "token", "api_key", "apikey",
-    "ssn", "social_security", "credit_card", "cc_number", "card_number",
-    "cvv", "cvc", "pin", "dob", "date_of_birth", "mother_maiden_name",
-    "license_number", "driver_license", "passport", "bank_account",
-    "routing_number", "swift_code", "iban",
+    "password", "passwd", "pwd", "secret", "token", "api_key", "apikey", "auth_key",
+    "ssn", "social_security", "credit_card", "cc_number", "card_number", "cvv", "cvc",
+    "pin", "dob", "date_of_birth", "mother_maiden_name", "license_number", "driver_license",
+    "passport", "bank_account", "routing_number", "swift_code", "iban", "account_number",
+    "routing", "swift", "iban", "bic", "sort_code", "bsb", "clabe", "aba", "fedwire",
+    "email", "phone", "mobile", "telephone", "fax", "cell", "contact", "address",
+    "street", "city", "state", "zip", "postal", "country", "ip_address", "mac_address",
+    "device_id", "session_id", "user_id", "customer_id", "client_id", "tenant_id",
+    "subscription_id", "order_id", "transaction_id", "payment_id", "invoice_id",
+    "contract_id", "agreement_id", "license_key", "serial_number", "activation_code",
+    "oauth_token", "refresh_token", "access_token", "bearer_token", "jwt_token",
+    "private_key", "public_key", "certificate", "csr", "pem", "der", "p12", "pfx",
+    "ssh_key", "pgp_key", "gpg_key", "encryption_key", "decryption_key", "signature",
+    "hash", "checksum", "digest", "fingerprint", "nonce", "salt", "iv", "vector",
+    "seed", "random", "entropy", "uuid", "guid", "correlation_id", "request_id",
+    "trace_id", "span_id", "parent_id", "child_id", "root_id", "event_id", "message_id",
 }
 
 
@@ -111,6 +137,21 @@ class PIISanitizer:
 
         # Replace API keys / tokens (generic)
         value = APIKEY_PATTERN.sub(r"\1: [REDACTED]", value)
+
+        # Replace bank accounts
+        value = BANK_PATTERN.sub("****-****-****-****", value)
+
+        # Replace IP addresses
+        value = IP_PATTERN.sub("***.***.***.***", value)
+
+        # Replace URLs with sensitive parameters
+        value = URL_PATTERN.sub("[REDACTED_URL]", value)
+
+        # Replace potential names (basic masking)
+        value = NAME_PATTERN.sub("[NAME]", value)
+
+        # Replace potential addresses
+        value = ADDRESS_PATTERN.sub("[ADDRESS]", value)
 
         return value
 
@@ -188,16 +229,38 @@ class PIISanitizer:
         return result
 
     @classmethod
-    def sanitize(cls, data: Any) -> Any:
+    def sanitize_output(cls, data: Any) -> Any:
         """
-        Sanitize any JSON-serializable data structure.
-
-        Args:
-            data: The data to sanitize
-
-        Returns:
-            Sanitized copy of data (original unchanged)
+        Sanitize data for output/logging, removing sensitive fields and masking PII.
+        
+        This is more aggressive than sanitize() - removes entire sensitive fields.
         """
+        if isinstance(data, dict):
+            return cls._sanitize_output_dict(data)
+        elif isinstance(data, list):
+            return [cls.sanitize_output(item) for item in data]
+        elif isinstance(data, str):
+            return cls.sanitize_string(data)
+        else:
+            return data
+
+    @classmethod
+    def _sanitize_output_dict(cls, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Sanitize dictionary for output, removing sensitive fields entirely."""
+        result = {}
+        for key, value in data.items():
+            if cls.should_sanitize_field(key):
+                # Remove sensitive fields entirely
+                continue
+            elif isinstance(value, dict):
+                result[key] = cls._sanitize_output_dict(value)
+            elif isinstance(value, list):
+                result[key] = [cls.sanitize_output(item) for item in data]
+            elif isinstance(value, str):
+                result[key] = cls.sanitize_string(value)
+            else:
+                result[key] = value
+        return result
         try:
             if isinstance(data, dict):
                 return cls.sanitize_dict(data)
@@ -209,6 +272,21 @@ class PIISanitizer:
                 return data
         except Exception as e:
             logger.warning("[PII] Sanitization error: %s", e)
+            return data
+
+    @classmethod
+    def sanitize(cls, data: Any) -> Any:
+        """
+        General-purpose sanitizer that chooses the appropriate sanitization method
+        based on data type.
+        """
+        if isinstance(data, dict):
+            return cls.sanitize_dict(data)
+        elif isinstance(data, list):
+            return cls.sanitize_list(data)
+        elif isinstance(data, str):
+            return cls.sanitize_string(data)
+        else:
             return data
 
 

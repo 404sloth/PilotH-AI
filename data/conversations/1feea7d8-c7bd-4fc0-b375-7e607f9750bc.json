@@ -1,0 +1,29 @@
+{
+  "id": "1feea7d8-c7bd-4fc0-b375-7e607f9750bc",
+  "messages": [
+    {
+      "role": "user",
+      "content": "list all vendors for different services we have across all category",
+      "timestamp": "2026-04-16T22:06:01.765848",
+      "metadata": {
+        "session_id": "4d4b34ca-5f53-4c9c-a18e-8def1e360384"
+      }
+    },
+    {
+      "role": "assistant",
+      "content": "Completed assessment for vendor. Key findings: See detailed results below.",
+      "timestamp": "2026-04-16T22:06:01.828267",
+      "metadata": {
+        "agent": "vendor_management",
+        "action": "full_assessment",
+        "confidence": 0.3,
+        "session_id": "4d4b34ca-5f53-4c9c-a18e-8def1e360384"
+      }
+    }
+  ],
+  "created_at": "2026-04-16T22:06:01.765525",
+  "updated_at": "2026-04-16T22:06:01.828271",
+  "metadata": {
+    "session_id": "4d4b34ca-5f53-4c9c-a18e-8def1e360384"
+  }
+}

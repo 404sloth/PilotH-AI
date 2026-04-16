@@ -3,7 +3,7 @@ Settings — centralised configuration with environment variable support.
 All sensitive values come from environment or .env file. No defaults for secrets.
 """
 
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field
 
 
@@ -49,7 +49,8 @@ class Settings(BaseSettings):
     port: int = Field(8000)
     debug: bool = Field(False)
 
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-        case_sensitive = False
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+    )

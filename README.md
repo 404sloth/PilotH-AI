@@ -39,8 +39,23 @@ It routes natural language user requests to specialised AI agents. Each agent ha
 
 | Agent | Module Key | Capabilities |
 |---|---|---|
-| Vendor Management | `vendor_management` | Best-fit ranking, SLA monitoring, contract parsing, scorecard |
+| Vendor Management | `vendor_management` | Best-fit ranking, SLA monitoring, contract parsing, scorecard, risk assessment, financial analysis, agreement expiry tracking, knowledge base search |
 | Meetings & Communication | `meetings_communication` | Smart scheduling, summarization, briefings, sentiment, follow-ups |
+| Knowledge Base | `knowledge_base` | Semantic search across vendor documents, agreements, communications, and policies |
+
+### Key Features (v1.1)
+
+- **Natural Language Input**: Accept plain text prompts instead of structured JSON
+- **Intelligent Intent Parsing**: Advanced LLM-based intent detection with automatic tool routing
+- **Comprehensive Logging**: Detailed logging for all agent and tool executions with PII masking
+- **Advanced PII Protection**: Robust data sanitization for emails, phones, SSNs, credit cards, IPs, and more
+- **Knowledge Base Integration**: Automatic semantic search across all document collections
+- **Smart Output Formatting**: Clean, user-focused responses with unnecessary data filtered out
+- **LLM Fallback Chain**: Automatic fallback from OpenAI → Groq → Ollama with connection validation
+- **Agreement Expiry Notifications**: 7-day advance warnings for contract renewals
+- **Risk Assessment Tools**: Financial, operational, compliance, and concentration risk analysis
+- **Financial Analysis**: Spending optimization, budget tracking, and market comparisons
+- **Interactive Simulations**: Contract negotiation, SLA violation response, and budget planning scenarios
 
 ---
 
@@ -91,6 +106,100 @@ User Request (REST / WebSocket)
 3. **One responsibility per tool** — each tool does exactly one thing
 4. **LLM calls always have fallbacks** — rule-based or mock if LLM is unavailable
 5. **Pydantic v2 everywhere** — all inputs/outputs are typed and validated
+
+---
+
+## 2.5 API Usage Examples
+
+### Natural Language Input (Recommended)
+
+```bash
+# Vendor Management
+curl -X POST http://localhost:8000/agents/vendor_management/run \
+  -H "Content-Type: application/json" \
+  -d '{"prompt": "Find the best cloud vendor within $50,000 budget"}'
+
+# Knowledge Base Search
+curl -X POST http://localhost:8000/agents/knowledge_base/run \
+  -H "Content-Type: application/json" \
+  -d '{"prompt": "What do we know about vendor compliance requirements?"}'
+
+# Meeting Scheduling
+curl -X POST http://localhost:8000/agents/meetings_communication/run \
+  -H "Content-Type: application/json" \
+  -d '{"prompt": "Schedule a meeting with the vendor team next Tuesday at 2pm"}'
+```
+
+### Legacy JSON Input (Still Supported)
+
+```bash
+curl -X POST http://localhost:8000/agents/vendor_management/run \
+  -H "Content-Type: application/json" \
+  -d '{"input": {"action": "find_best", "service_tags": ["cloud"], "budget_usd": 50000}}'
+```
+
+### Response Format
+
+```json
+{
+  "session_id": "abc-123-def",
+  "response": "I found 3 vendors matching your criteria. The top recommendation is CloudServe Inc. with a score of 8.5/10.",
+  "data": {
+    "vendors": [
+      {
+        "name": "CloudServe Inc.",
+        "overall_score": 8.5,
+        "monthly_cost": 45000
+      }
+    ]
+  },
+  "metadata": {
+    "agent": "vendor_management",
+    "action": "find_best",
+    "confidence": 0.92,
+    "token_usage": {"total": 1250, "prompt": 800, "completion": 450}
+  }
+}
+```
+
+---
+
+## 2.6 Recent Improvements (v1.1)
+
+### Natural Language Processing
+- **Intent Parser**: Advanced LLM-based intent detection with confidence scoring
+- **Tool Registry**: Comprehensive tool descriptions for accurate routing
+- **Multi-turn Context**: Conversation history awareness for better understanding
+
+### Enhanced Security & Privacy
+- **Advanced PII Sanitization**: Masks emails, phones, SSNs, credit cards, IPs, names, addresses
+- **Input Sanitization**: All user inputs sanitized before LLM processing
+- **Output Filtering**: Sensitive data removed from responses
+- **Field-level Protection**: Automatic detection of sensitive field names
+
+### Comprehensive Logging
+- **Agent Execution Logs**: Detailed timing and success/failure tracking
+- **Tool Execution Logs**: Per-tool performance metrics and retry information
+- **PII-safe Logging**: All logs sanitized before storage
+- **Structured JSON Logs**: Easy aggregation and monitoring
+
+### Knowledge Base Integration
+- **Semantic Search**: Vector-based search across all document collections
+- **Multi-collection Support**: Agreements, communications, vendor data, financial reports
+- **Automatic Routing**: KB queries detected and routed automatically
+- **Relevance Scoring**: Results ranked by semantic similarity
+
+### Robust Fallbacks
+- **LLM Chain**: OpenAI → Groq → Ollama with automatic failover
+- **Connection Validation**: Pre-flight checks before LLM usage
+- **Retry Logic**: Configurable retries with exponential backoff
+- **Graceful Degradation**: Keyword-based fallbacks when LLMs fail
+
+### Smart Output Formatting
+- **User-focused Responses**: Clean, readable summaries
+- **Data Filtering**: Unnecessary internal fields removed
+- **Contextual Summaries**: Agent-specific response formatting
+- **PII-free Outputs**: All responses sanitized for safety
 
 ---
 

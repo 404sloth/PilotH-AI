@@ -22,3 +22,5 @@ langsmith>=0.1.0
 # Utilities
 python-dotenv>=1.0.0
 
+#vectorDB
+chromadb

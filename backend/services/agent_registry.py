@@ -39,20 +39,44 @@ def initialise_agents(config: Settings) -> Dict[str, object]:
     hitl = HITLManager(config.hitl_threshold)
 
     # ── Vendor Management Agent ──────────────────────────────
-    from agents.vendor_management.agent import VendorManagementAgent
+    try:
+        from agents.vendor_management.agent import VendorManagementAgent
 
-    vendor_agent = VendorManagementAgent(
-        config=config, tool_registry=registry, hitl_manager=hitl
-    )
-    _agents["vendor_management"] = vendor_agent
+        vendor_agent = VendorManagementAgent(
+            config=config, tool_registry=registry, hitl_manager=hitl
+        )
+        _agents["vendor_management"] = vendor_agent
+        logger.info("✓ Vendor Management Agent registered")
+    except Exception as e:
+        logger.warning("Failed to initialize Vendor Management Agent: %s", e)
 
     # ── Meetings & Communication Agent ───────────────────────
-    from agents.communication.agent import MeetingCommunicationAgent
+    try:
+        from agents.communication.agent import MeetingCommunicationAgent
 
-    meeting_agent = MeetingCommunicationAgent(
-        config=config, tool_registry=registry, hitl_manager=hitl
-    )
-    _agents["meetings_communication"] = meeting_agent
+        meeting_agent = MeetingCommunicationAgent(
+            config=config, tool_registry=registry, hitl_manager=hitl
+        )
+        _agents["meetings_communication"] = meeting_agent
+        logger.info("✓ Meetings & Communication Agent registered")
+    except Exception as e:
+        logger.warning("Failed to initialize Meetings & Communication Agent: %s", e)
+
+    # ── Knowledge Base Agent ─────────────────────────────────
+    try:
+        from agents.knowledge_base.agent import KnowledgeBaseAgent
+
+        kb_agent = KnowledgeBaseAgent(
+            config=config, tool_registry=registry, hitl_manager=hitl
+        )
+        _agents["knowledge_base"] = kb_agent
+        logger.info("✓ Knowledge Base Agent registered")
+    except Exception as e:
+        logger.warning("Failed to initialize Knowledge Base Agent: %s", e)
+
+    if not _agents:
+        logger.error("No agents could be initialized. Check LLM configuration.")
+        raise RuntimeError("No agents available - LLM providers may be misconfigured")
 
     logger.info("Agents initialised: %s", list(_agents.keys()))
     logger.info("Tool registry: %s", registry.list_all_tools())

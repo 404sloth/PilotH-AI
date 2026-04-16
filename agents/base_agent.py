@@ -119,14 +119,50 @@ class BaseAgent(ABC):
             AgentInputError: If input validation fails
             AgentOutputError: If output validation fails
         """
-        validated_input = self.validate_input(input_data)
-        graph = self.get_subgraph()
+        from observability.logger import get_logger
+        from observability.pii_sanitizer import PIISanitizer
+        import time
 
-        # Run the graph (uses checkpointer from orchestrator context if provided)
-        result = graph.invoke(validated_input)
+        logger = get_logger(f"agent_{self.name}")
+        start_time = time.time()
 
-        validated_output = self.validate_output(result)
-        return validated_output
+        try:
+            # Sanitize and log input
+            safe_input = PIISanitizer.sanitize_dict(input_data)
+            logger.info("Agent execution started", data={
+                "agent": self.name,
+                "input_keys": list(safe_input.keys()),
+                "session_id": input_data.get("session_id")
+            })
+
+            validated_input = self.validate_input(input_data)
+            graph = self.get_subgraph()
+
+            # Run the graph (uses checkpointer from orchestrator context if provided)
+            result = graph.invoke(validated_input)
+
+            validated_output = self.validate_output(result)
+
+            # Log successful execution
+            execution_time = time.time() - start_time
+            safe_output = PIISanitizer.sanitize_output(validated_output)
+            logger.info("Agent execution completed", data={
+                "agent": self.name,
+                "execution_time_ms": round(execution_time * 1000, 2),
+                "output_keys": list(safe_output.keys()),
+                "session_id": input_data.get("session_id")
+            })
+
+            return validated_output
+
+        except Exception as e:
+            execution_time = time.time() - start_time
+            logger.error("Agent execution failed", error=str(e), data={
+                "agent": self.name,
+                "execution_time_ms": round(execution_time * 1000, 2),
+                "session_id": input_data.get("session_id")
+            })
+            raise
 
     async def aexecute(self, input_data: Dict[str, Any]) -> Dict[str, Any]:
         """Async version of execute."""
