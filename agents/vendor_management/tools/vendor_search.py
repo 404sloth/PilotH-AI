@@ -1,6 +1,6 @@
 """
 Tool: VendorSearchTool
-Single responsibility: search vendors by name / ID / service_tag.
+Single responsibility: search vendors by name / ID / service_tag / industry / category.
 All SQL execution delegated to vendor_db DAL.
 """
 
@@ -19,6 +19,12 @@ class VendorSearchInput(BaseModel):
     service_tag: Optional[str] = Field(
         None, description="Service tag to filter by (e.g. cloud_hosting)"
     )
+    industry: Optional[str] = Field(
+        None, description="Industry name to filter by (e.g. Technology, Finance)"
+    )
+    category: Optional[str] = Field(
+        None, description="Category name to filter by (e.g. Cloud & Infrastructure)"
+    )
     country: Optional[str] = Field(
         None, description="ISO 2-letter country code (e.g. US)"
     )
@@ -32,6 +38,7 @@ class VendorRecord(BaseModel):
     country: str
     contract_status: str
     category: str
+    industry: str
     services: List[str]
     quality_score: Optional[float]
     on_time_rate: Optional[float]
@@ -52,7 +59,7 @@ class VendorSearchTool(StructuredTool):
 
     name: str = "vendor_search"
     description: str = (
-        "Search for vendors by name, ID, service capability, or country. "
+        "Search for vendors by name, ID, service capability, industry, category, or country. "
         "Returns vendor profile data including tier, performance metrics, and services offered."
     )
     args_schema: type[BaseModel] = VendorSearchInput
@@ -65,6 +72,8 @@ class VendorSearchTool(StructuredTool):
             vendor_id=validated_input.vendor_id,
             service_tag=validated_input.service_tag,
             country=validated_input.country,
+            industry=validated_input.industry,
+            category=validated_input.category,
             limit=validated_input.limit,
         )
 
@@ -79,6 +88,7 @@ class VendorSearchTool(StructuredTool):
                 country=r.get("country", "US"),
                 contract_status=r.get("contract_status", "unknown"),
                 category=r.get("category", "Unknown"),
+                industry=r.get("industry", "Unknown"),
                 services=r.get("services", []),
                 quality_score=r.get("quality_score"),
                 on_time_rate=r.get("on_time_rate"),

@@ -12,6 +12,7 @@ from .agenda_tool import AgendaGeneratorTool
 from .slack_tool import SlackNotifierTool
 from .action_tracker_tool import ActionItemTrackerTool
 from .conflict_resolver_tool import ConflictResolverTool
+from .meeting_search_tool import MeetingSearchTool
 
 __all__ = [
     "GoogleCalendarCreateTool",
@@ -25,4 +26,5 @@ __all__ = [
     "SlackNotifierTool",
     "ActionItemTrackerTool",
     "ConflictResolverTool",
+    "MeetingSearchTool",
 ]

@@ -7,7 +7,8 @@ from __future__ import annotations
 
 import logging
 import uuid
-from typing import Any, Dict, Optional
+import json
+from typing import Any, Dict, Optional, List
 
 from config.settings import Settings
 from memory.session_store import get_session_store
@@ -44,15 +45,6 @@ class OrchestratorController:
     ) -> Dict[str, Any]:
         """
         Process a user message end-to-end with advanced intent parsing and conversation storage.
-
-        Args:
-            message:    Natural language user input
-            session_id: Existing session or None to create new
-            context:    Optional additional context dict
-            agent_hint: Optional hint for which agent to prefer
-
-        Returns:
-            Dict with result, agent used, session_id, conversation_id, and intent confidence
         """
         from observability.logger import get_logger
         from observability.pii_sanitizer import PIISanitizer
@@ -122,18 +114,23 @@ class OrchestratorController:
             intent.get("confidence", 0),
         )
 
-        # 2. Route to agent
-        from orchestrator.agent_router import AgentRouter
+        if intent.get("agent") == "system" and intent.get("action") == "conversational":
+            assistant_response = self._generate_dynamic_help(message, TOOL_REGISTRY)
+            result = {"response": assistant_response}
+            formatted_result = {"response": assistant_response, "data": {}}
+        else:
+            # 2. Route to agent
+            from orchestrator.agent_router import AgentRouter
 
-        result = AgentRouter().route(
-            agent_name=intent["agent"],
-            action=intent["action"],
-            payload={**intent.get("params", {}), **runtime_context},
-            session_id=session_id,
-        )
+            result = AgentRouter().route(
+                agent_name=intent["agent"],
+                action=intent["action"],
+                payload={**intent.get("params", {}), **runtime_context},
+                session_id=session_id,
+            )
 
-        # 3. Format and filter final output
-        formatted_result = self._format_final_output(result, intent)
+            # 3. Format and filter final output using LLM for intelligent layout
+            formatted_result = self._format_final_output_with_llm(result, intent, message)
 
         # 4. Save to session and global memory
         assistant_response = formatted_result.get("response", "")
@@ -181,91 +178,80 @@ class OrchestratorController:
             }
         }
 
-    def _format_final_output(self, result: Dict[str, Any], intent: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Format the final output for user consumption, filtering out unnecessary information.
-        """
-        from observability.pii_sanitizer import PIISanitizer
+    def _generate_dynamic_help(self, user_query: str, registry: Dict[str, Any]) -> str:
+        """Use LLM to generate a professional help message based on current registry."""
+        from llm.model_factory import get_llm
+        from langchain_core.messages import HumanMessage, SystemMessage
+
+        # Simplify registry for LLM context
+        capabilities = []
+        for agent_id, info in registry.items():
+            if agent_id == "system": continue
+            agent_cap = {
+                "name": info.get("agent_name"),
+                "description": info.get("agent_description"),
+                "features": [act["description"] for act in info.get("actions", {}).values()]
+            }
+            capabilities.append(agent_cap)
+
+        prompt = f"""You are PilotH, an Enterprise Intelligence Console. 
+The user is asking about your features or saying hello.
+Based on the registered capabilities below, write a professional, welcoming response.
+
+Capabilities:
+{json.dumps(capabilities, indent=2)}
+
+User Query: "{user_query}"
+
+Guidelines:
+- Be concise but thorough.
+- Group features by domain (Vendor Management, Communications, etc.).
+- Use bullet points for readability.
+- Mention that you can handle complex data requests and formatting.
+"""
+        try:
+            llm = get_llm(temperature=0.3)
+            resp = llm.invoke([HumanMessage(content=prompt)])
+            return resp.content.strip()
+        except Exception:
+            return "I am PilotH. I can help with Vendor Management, Meeting Communication, and Knowledge Retrieval. How can I assist?"
+
+    def _format_final_output_with_llm(self, result: Dict[str, Any], intent: Dict[str, Any], original_query: str) -> Dict[str, Any]:
+        """Use LLM to intelligently format the raw agent data into a professional enterprise layout."""
+        from llm.model_factory import get_llm
+        from langchain_core.messages import HumanMessage, SystemMessage
+
+        # If agent already provided a good summary, use it
+        if result.get("llm_summary"):
+            return {"response": result["llm_summary"], "data": result}
 
         agent = intent.get("agent", "")
         action = intent.get("action", "")
 
-        # Extract the most relevant response text
-        response_text = ""
-        if "llm_summary" in result:
-            response_text = result["llm_summary"]
-        elif "message" in result:
-            response_text = result["message"]
-        elif "response" in result:
-            response_text = result["response"]
-        else:
-            # Generate a summary based on the result structure
-            response_text = self._generate_response_summary(result, agent, action)
+        prompt = f"""You are a senior enterprise data strategist. Your goal is to transform raw system data into a beautiful, professional, and actionable response for the user.
 
-        # Filter data for output - remove internal fields
-        filtered_data = {}
-        important_keys = {
-            "vendor_management": [
-                "vendors",
-                "ranked_vendors",
-                "top_recommendation",
-                "overall_score",
-                "sla_compliance",
-                "evaluation_breakdown",
-                "strengths",
-                "weaknesses",
-                "risks",
-                "recommendations",
-                "vendor_id",
-                "vendor_name",
-            ],
-            "meetings_communication": ["meeting", "summary", "agenda", "participants"],
-            "knowledge_base": ["documents", "total_results", "query"]
-        }
+USER'S REQUEST: "{original_query}"
+INTELLIGENCE SOURCE: {agent} (Action: {action})
 
-        keys_to_include = important_keys.get(agent, [])
-        for key in keys_to_include:
-            if key in result:
-                filtered_data[key] = result[key]
+RAW DATA PAYLOAD:
+{json.dumps(result, indent=2)[:5000]}
 
-        return {
-            "response": response_text,
-            "data": filtered_data
-        }
+INSTRUCTIONS:
+1. STRUCTURE: Use clear headings (##) and sub-headings (###) to organize information.
+2. TABLES: If the data contains lists of items (vendors, meetings, metrics), ALWAYS present them in a clean Markdown Table format.
+   - Example: | Name | Status | Expiry |
+              |------|--------|--------|
+3. BULLETS: Use bullet points for key findings, risks, or recommendations.
+4. TYPOGRAPHY: Use **bold** for emphasis and `code` for IDs or specific references.
+5. EXPLANATION: After presenting data/tables, provide a concise "Executive Analysis" explaining what the data means for the user.
+6. NO PLACEHOLDERS: Do NOT say 'See details below'. You are the detail. Present everything here.
+7. PROFESSIONALISM: Maintain a premium, high-trust enterprise tone.
 
-    def _generate_response_summary(self, result: Dict[str, Any], agent: str, action: str) -> str:
-        """Generate a human-readable summary when no explicit response is available."""
-        if agent == "vendor_management":
-            if action == "search_vendors":
-                vendors = result.get("vendors", [])
-                if vendors:
-                    names = ", ".join(v.get("name", "Unknown") for v in vendors[:5])
-                    return f"I found {len(vendors)} vendors matching your request. Sample matches: {names}."
-                return "No vendors found matching your request. Try broadening the filters."
-
-            if action == "find_best":
-                vendors = result.get("ranked_vendors", [])
-                if vendors:
-                    top_vendor = vendors[0]
-                    return f"I found {len(vendors)} ranked vendors. The top recommendation is {top_vendor.get('name', 'Unknown')} with a fit score of {top_vendor.get('fit_score', 'N/A')}."
-                return "No vendors found matching your criteria. Try adjusting your requirements."
-            
-            elif action == "full_assessment":
-                return f"Completed assessment for vendor. Key findings: {result.get('summary', 'See detailed results below.')}"
-            
-            elif action == "monitor_sla":
-                return f"SLA monitoring complete. Current status: {result.get('status', 'Check details below.')}"
-        
-        elif agent == "meetings_communication":
-            if action == "schedule":
-                return f"Meeting scheduled successfully. Details: {result.get('meeting_details', 'See below.')}"
-            
-            elif action == "summarize":
-                return f"Meeting summary generated. Key points: {result.get('key_points', 'See full summary below.')}"
-        
-        elif agent == "knowledge_base":
-            total = result.get("total_results", 0)
-            return f"Found {total} relevant documents in the knowledge base. See results below."
-
-        # Default fallback
-        return "Task completed successfully. See detailed results below."
+If no relevant data was found, provide a professional explanation of what was searched and suggest specific alternative queries.
+"""
+        try:
+            llm = get_llm(temperature=0.1)  # Low temp for precise formatting
+            resp = llm.invoke([HumanMessage(content=prompt)])
+            return {"response": resp.content.strip(), "data": result}
+        except Exception:
+            return {"response": "Request processed successfully. Please refer to the intelligence trace for the raw results.", "data": result}

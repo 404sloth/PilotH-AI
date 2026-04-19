@@ -6,7 +6,7 @@ Aggregates performance, SLA, milestones, and contract in one DAL call.
 
 from __future__ import annotations
 
-from typing import Optional
+from typing import Optional, Dict
 from pydantic import BaseModel, Field
 from tools.base_tool import StructuredTool
 
@@ -30,6 +30,7 @@ class VendorScorecardOutput(BaseModel):
     delayed_milestones: int
     has_active_contract: bool
     contract_value: Optional[float]
+    evaluation_breakdown: Dict[str, float] = Field(default_factory=dict)
     summary: str
 
 
@@ -80,8 +81,19 @@ class VendorScorecardTool(StructuredTool):
         # Compute derived overall score
         q = float(v.get("quality_score") or 0)
         ot = (float(v.get("on_time_rate") or 0)) * 100
-        r = float(v.get("avg_client_rating") or 0) / 5.0 * 100
+        r = (float(v.get("avg_client_rating") or 0) / 5.0) * 100
         sc = float(sla.get("overall_compliance") or 100)
+        
+        # Breakdown for the Evaluate node to use
+        breakdown = {
+            "quality": q,
+            "delivery": ot,
+            "satisfaction": r,
+            "compliance": sc,
+            "innovation": float(v.get("innovation_score") or 50),
+            "communication": float(v.get("communication_score") or 50)
+        }
+
         delay_penalty = min(delayed_ms * 5, 20)  # -5pts per delayed milestone, max -20
         overall = round(
             (q * 0.30 + ot * 0.25 + r * 0.20 + sc * 0.25) - delay_penalty, 1
@@ -111,5 +123,6 @@ class VendorScorecardTool(StructuredTool):
             delayed_milestones=delayed_ms,
             has_active_contract=contract is not None,
             contract_value=contract.get("total_value") if contract else None,
+            evaluation_breakdown=breakdown,
             summary=" | ".join(lines),
         )

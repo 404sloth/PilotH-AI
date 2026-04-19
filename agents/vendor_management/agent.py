@@ -112,6 +112,7 @@ class VendorManagementAgent(BaseAgent):
             "vendor_name": validated_in.vendor_name,
             "vendor_id": validated_in.vendor_id,
             "service_required": validated_in.service_required,
+            "industry": validated_in.industry,
             "budget_monthly": validated_in.budget_monthly,
             "min_quality_score": validated_in.min_quality_score,
             "min_on_time_rate": validated_in.min_on_time_rate,

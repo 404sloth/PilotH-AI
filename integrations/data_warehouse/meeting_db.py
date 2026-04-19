@@ -706,6 +706,50 @@ def get_meeting_full(meeting_id: str) -> Optional[Dict[str, Any]]:
         return result
 
 
+def search_meetings(
+    title: Optional[str] = None,
+    attendee_email: Optional[str] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    limit: int = 50,
+) -> List[Dict[str, Any]]:
+    """
+    Search meetings with flexible filters.
+    """
+    with get_db_connection() as conn:
+        cur = conn.cursor()
+        sql = """
+            SELECT DISTINCT m.*, p.full_name AS organizer_name
+            FROM meetings m
+            JOIN persons p ON p.id = m.organizer_id
+            LEFT JOIN meeting_attendees ma ON ma.meeting_id = m.id
+            LEFT JOIN persons att ON att.id = ma.person_id
+            WHERE 1=1
+        """
+        params: List[Any] = []
+        
+        if title:
+            sql += " AND LOWER(m.title) LIKE ?"
+            params.append(f"%{title.lower()}%")
+        
+        if attendee_email:
+            sql += " AND LOWER(att.email) = ?"
+            params.append(attendee_email.lower())
+            
+        if date_from:
+            sql += " AND m.start_time >= ?"
+            params.append(date_from)
+            
+        if date_to:
+            sql += " AND m.start_time <= ?"
+            params.append(date_to)
+            
+        sql += f" ORDER BY m.start_time DESC LIMIT {int(limit)}"
+        
+        cur.execute(sql, params)
+        return [dict(r) for r in cur.fetchall()]
+
+
 def log_communication(
     sender_id: str,
     recipient_id: str,

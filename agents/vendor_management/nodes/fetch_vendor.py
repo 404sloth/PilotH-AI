@@ -7,10 +7,13 @@ For others: runs the VendorSearchTool + VendorScorecardTool.
 
 from __future__ import annotations
 
+import logging
 from typing import Any, Dict
 from langchain_core.messages import ToolMessage
 
 from agents.vendor_management.schemas import VendorState
+
+logger = logging.getLogger(__name__)
 
 
 def fetch_vendor_node(state: VendorState) -> Dict[str, Any]:
@@ -44,13 +47,20 @@ def _run_vendor_discovery(state: VendorState) -> Dict[str, Any]:
             vendor_name=state.get("vendor_name"),
             vendor_id=state.get("vendor_id"),
             service_tag=state.get("service_required"),
+            industry=state.get("industry"),
+            category=state.get("category"),
             country=state.get("country"),
             limit=min(limit, 50),
         )
     )
 
     if not result.found:
-        scope = state.get("service_required") or "the requested criteria"
+        scope_parts = []
+        if state.get("service_required"): scope_parts.append(f"service '{state['service_required']}'")
+        if state.get("industry"): scope_parts.append(f"industry '{state['industry']}'")
+        if state.get("category"): scope_parts.append(f"category '{state['category']}'")
+        scope = " and ".join(scope_parts) or "the requested criteria"
+        
         return {
             "vendors": [],
             "requires_human_review": True,
@@ -143,22 +153,26 @@ def _run_search(state: VendorState) -> Dict[str, Any]:
         VendorScorecardInput,
     )
 
+    vendor_name = state.get("vendor_name")
+    vendor_id = state.get("vendor_id")
+
     tool = VendorSearchTool()
     result = tool.execute(
         VendorSearchInput(
-            vendor_name=state.get("vendor_name"),
-            vendor_id=state.get("vendor_id"),
+            vendor_name=vendor_name,
+            vendor_id=vendor_id,
             limit=1,
         )
     )
 
     if not result.found:
+        ident = vendor_name or vendor_id or "unspecified vendor"
         return {
-            "error": f"Vendor '{state.get('vendor_name') or state.get('vendor_id')}' not found",
+            "error": f"Vendor '{ident}' not found",
             "requires_human_review": True,
             "messages": [
                 ToolMessage(
-                    content="Vendor not found in database.", tool_call_id="fetch_vendor"
+                    content=f"Vendor '{ident}' not found in database.", tool_call_id="fetch_vendor"
                 )
             ],
         }
@@ -170,14 +184,21 @@ def _run_search(state: VendorState) -> Dict[str, Any]:
     sc_tool = VendorScorecardTool()
     scorecard = sc_tool.execute(VendorScorecardInput(vendor_id=vendor_id))
 
+    # Use .get() or check attribute to be safe
+    eval_breakdown = getattr(scorecard, "evaluation_breakdown", {})
+
     return {
         "vendor_id": vendor_id,
+        "vendor_name": vendor.name,
         "vendor_details": vendor.model_dump(),
         "sla_compliance": scorecard.sla_compliance,
         "overall_score": scorecard.overall_score,
+        "evaluation_scores": eval_breakdown,
+        "strengths": getattr(scorecard, "strengths", []),
+        "weaknesses": getattr(scorecard, "weaknesses", []),
         "messages": [
             ToolMessage(
-                content=f"Fetched vendor: {vendor.name} (score: {scorecard.overall_score:.1f}/100)",
+                content=f"Fetched vendor: {vendor.name} (ID: {vendor_id}, score: {scorecard.overall_score:.1f}/100)",
                 tool_call_id="fetch_vendor",
             )
         ],

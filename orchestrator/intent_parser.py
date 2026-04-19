@@ -26,12 +26,27 @@ otel_logger = get_logger("intent_parser")
 # ── Tool Registry with Descriptions ────────────────────────────────────────
 
 TOOL_REGISTRY = {
+    "system": {
+        "agent_name": "system",
+        "agent_description": "System-level operations and general conversational assistance",
+        "actions": {
+            "conversational": {
+                "description": "Handle greetings, general questions, and capability inquiries",
+                "triggers": [
+                    "hello", "hi", "hey", "help", "what can you do", "features", "capabilities", "what you can able to do"
+                ],
+                "required_params": [],
+                "optional_params": [],
+                "default": True,
+            }
+        }
+    },
     "vendor_management": {
         "agent_name": "vendor_management",
         "agent_description": "Intelligent vendor evaluation and management system",
         "actions": {
             "search_vendors": {
-                "description": "List or browse vendors across all services, categories, or a filtered service/country",
+                "description": "List or browse vendors across all services, categories, or a filtered service/country/industry/category",
                 "triggers": [
                     "list vendors",
                     "list all vendors",
@@ -42,7 +57,7 @@ TOOL_REGISTRY = {
                     "vendors for different services",
                 ],
                 "required_params": [],
-                "optional_params": ["service_required", "country", "vendor_name", "vendor_id", "top_n"],
+                "optional_params": ["service_required", "country", "vendor_name", "vendor_id", "industry", "category", "top_n"],
                 "default": True,
             },
             "find_best": {
@@ -161,6 +176,19 @@ TOOL_REGISTRY = {
                 "required_params": ["title", "participants"],
                 "optional_params": ["context"],
             },
+            "search_meetings": {
+                "description": "Search for meetings by title, participant email, or date range",
+                "triggers": [
+                    "list meetings",
+                    "show meetings",
+                    "find meetings",
+                    "all meetings",
+                    "search meetings",
+                    "meeting list",
+                ],
+                "required_params": [],
+                "optional_params": ["title", "attendee_email", "date_from", "date_to", "limit"],
+            },
         },
     },
     "knowledge_base": {
@@ -230,6 +258,16 @@ class IntentParser:
             safe_context = PIISanitizer.sanitize_dict(context)
             safe_message = PIISanitizer.sanitize_string(message)
 
+            # Fast-path for conversational queries
+            if self._is_conversational(safe_message):
+                return {
+                    "agent": "system",
+                    "action": "conversational",
+                    "params": {},
+                    "confidence": 1.0,
+                    "reasoning": "Detected conversational or help request."
+                }
+
             # If agent_hint provided and valid, use it directly
             if agent_hint and agent_hint in TOOL_REGISTRY:
                 span.add_event("using_agent_hint", {"agent": agent_hint})
@@ -276,6 +314,14 @@ class IntentParser:
             )
             return result
 
+    def _is_conversational(self, message: str) -> bool:
+        lower = message.strip().lower()
+        if lower in ["hi", "hello", "hey", "hey!", "hi!", "hello!", "hi pilot", "hi piloth"]:
+            return True
+        if any(term in lower for term in ["what can you do", "list all features", "help me", "who are you", "what you can able to do"]):
+            return True
+        return False
+
     def _llm_parse_advanced(
         self,
         message: str,
@@ -285,8 +331,6 @@ class IntentParser:
     ) -> Dict[str, Any]:
         """
         Use LLM with advanced prompting to understand intent.
-        
-        Returns structured JSON with agent, action, params, confidence.
         """
         from llm.model_factory import get_llm
         from langchain_core.messages import HumanMessage, SystemMessage
@@ -337,6 +381,7 @@ Return ONLY valid JSON with NO markdown:
 
         # Call LLM
         llm = get_llm(temperature=0.0)
+        # Check if we should use specialized intent model if configured
         response = llm.invoke(messages)
         content = response.content.strip()
 
@@ -372,6 +417,8 @@ Return ONLY valid JSON with NO markdown:
         """
         if agent_hint == "vendor_management":
             return self._parse_vendor_intent(message, hinted=True)
+        if agent_hint == "meetings_communication":
+            return self._parse_communication_intent(message, hinted=True)
 
         lower = message.lower()
         agent_info = TOOL_REGISTRY.get(agent_hint, {})
@@ -430,7 +477,12 @@ Return ONLY valid JSON with NO markdown:
         lower = message.lower()
 
         if "vendor" in lower:
-            return self._parse_vendor_intent(message, hinted=False)
+            # Special case: "list all meetings" contains list and all, but we must favor communication if "meeting" is present
+            if "meeting" not in lower:
+                return self._parse_vendor_intent(message, hinted=False)
+        
+        if "meeting" in lower or "schedule" in lower or "brief" in lower:
+            return self._parse_communication_intent(message, hinted=False)
         
         # Score each possible agent+action combination
         scores: Dict[Tuple[str, str], int] = {}
@@ -480,39 +532,31 @@ Return ONLY valid JSON with NO markdown:
         """Fill missing params and correct obviously inconsistent vendor intents."""
         if not intent:
             return intent
-        if intent.get("agent") != "vendor_management":
-            return intent
 
-        parsed_vendor_intent = self._parse_vendor_intent(message, hinted=True)
-        if not parsed_vendor_intent:
-            return intent
+        if intent.get("agent") == "vendor_management":
+            # If user mentions "meeting", reconsider
+            if "meeting" in message.lower() and "vendor" not in message.lower():
+                comm_intent = self._parse_communication_intent(message, hinted=True)
+                if comm_intent and comm_intent["confidence"] > 0.6:
+                    return comm_intent
 
-        merged = dict(intent)
-        merged_params = {**parsed_vendor_intent.get("params", {}), **intent.get("params", {})}
-        merged["params"] = {k: v for k, v in merged_params.items() if v not in (None, "", [], {})}
+            parsed_vendor_intent = self._parse_vendor_intent(message, hinted=True)
+            if parsed_vendor_intent:
+                merged = dict(intent)
+                merged_params = {**parsed_vendor_intent.get("params", {}), **intent.get("params", {})}
+                merged["params"] = {k: v for k, v in merged_params.items() if v not in (None, "", [], {})}
+                return merged
 
-        if intent.get("action") in (None, "", "full_assessment"):
-            if parsed_vendor_intent.get("action") != "full_assessment" or not merged["params"].get("vendor_name") and not merged["params"].get("vendor_id"):
-                merged["action"] = parsed_vendor_intent["action"]
-                merged["reasoning"] = parsed_vendor_intent.get("reasoning", intent.get("reasoning", ""))
-                merged["confidence"] = max(intent.get("confidence", 0), parsed_vendor_intent.get("confidence", 0))
-
-        if merged.get("action") == "find_best" and not merged["params"].get("service_required"):
-            if parsed_vendor_intent.get("action") == "search_vendors":
-                merged["action"] = "search_vendors"
-                merged["reasoning"] = "Vendor discovery request did not specify a target service for ranking."
-
-        if merged.get("action") == "full_assessment" and not (
-            merged["params"].get("vendor_name") or merged["params"].get("vendor_id")
-        ):
-            merged["action"] = parsed_vendor_intent["action"]
-            merged["reasoning"] = parsed_vendor_intent.get("reasoning", "Adjusted because no specific vendor was identified.")
-
-        return merged
+        return intent
 
     def _parse_vendor_intent(self, message: str, hinted: bool) -> Dict[str, Any]:
         """Rule-based vendor intent parser with parameter extraction."""
         lower = message.lower()
+        
+        # Hard exclusion for meeting search
+        if "meeting" in lower and "vendor" not in lower:
+            return None
+
         params = self._extract_vendor_params(message)
 
         discovery_request = (
@@ -520,6 +564,8 @@ Return ONLY valid JSON with NO markdown:
             or "different services" in lower
             or "across all category" in lower
             or "across all categories" in lower
+            or "industry" in lower
+            or "category" in lower
         )
         best_request = (
             "vendor" in lower
@@ -530,7 +576,7 @@ Return ONLY valid JSON with NO markdown:
             for term in ["assess vendor", "vendor assessment", "evaluate vendor", "vendor profile", "vendor details", "tell me about vendor"]
         )
 
-        if discovery_request and not params.get("service_required"):
+        if discovery_request and not params.get("service_required") and not params.get("industry") and not params.get("category"):
             params.setdefault("top_n", 20)
             return {
                 "agent": "vendor_management",
@@ -568,22 +614,56 @@ Return ONLY valid JSON with NO markdown:
                 "reasoning": "Specific vendor assessment request detected.",
             }
 
-        if "vendor" in lower:
-            params.setdefault("top_n", 20)
-            return {
-                "agent": "vendor_management",
-                "action": "search_vendors",
-                "params": params,
-                "confidence": 0.55,
-                "reasoning": "Generic vendor request routed to vendor discovery.",
-            }
-
         return {
             "agent": "vendor_management",
             "action": "full_assessment",
             "params": params,
             "confidence": 0.3,
             "reasoning": "Default vendor fallback.",
+        }
+
+    def _parse_communication_intent(self, message: str, hinted: bool) -> Dict[str, Any]:
+        """Rule-based communication intent parser."""
+        lower = message.lower()
+        
+        search_request = any(term in lower for term in ["list meeting", "show meetings", "find meetings", "all meetings", "meeting list"])
+        summarize_request = any(term in lower for term in ["summarize", "summary", "notes from"])
+        brief_request = any(term in lower for term in ["brief", "prepare for", "briefing"])
+        schedule_request = any(term in lower for term in ["schedule", "book", "reserve"])
+
+        if search_request:
+            return {
+                "agent": "meetings_communication",
+                "action": "search_meetings",
+                "params": {},
+                "confidence": 0.95 if hinted else 0.85,
+                "reasoning": "Detected meeting search or listing request.",
+            }
+        
+        if summarize_request:
+            return {
+                "agent": "meetings_communication",
+                "action": "summarize",
+                "params": {},
+                "confidence": 0.8,
+                "reasoning": "Detected meeting summarization request.",
+            }
+
+        if schedule_request:
+            return {
+                "agent": "meetings_communication",
+                "action": "schedule",
+                "params": {},
+                "confidence": 0.8,
+                "reasoning": "Detected meeting scheduling request.",
+            }
+
+        return {
+            "agent": "meetings_communication",
+            "action": "brief",
+            "params": {},
+            "confidence": 0.3,
+            "reasoning": "Default communication fallback.",
         }
 
     def _extract_vendor_params(self, message: str) -> Dict[str, Any]:
@@ -593,6 +673,15 @@ Return ONLY valid JSON with NO markdown:
         service_required = self._extract_service_tag(message)
         if service_required:
             params["service_required"] = service_required
+
+        category = self._extract_category(message)
+        if category:
+            params["category"] = category
+
+        if "not on industry" not in lower and "not industry" not in lower:
+            industry = self._extract_industry(message)
+            if industry:
+                params["industry"] = industry
 
         budget = self._extract_budget(message)
         if budget is not None:
@@ -668,6 +757,63 @@ Return ONLY valid JSON with NO markdown:
                 matched_len = len(keyword)
         return matched_service
 
+    def _extract_category(self, message: str) -> Optional[str]:
+        lower = message.lower()
+        category_map = {
+            "it services": "IT Services",
+            "cloud & infrastructure": "Cloud & Infrastructure",
+            "cloud infrastructure": "Cloud & Infrastructure",
+            "data analytics": "Data Analytics",
+            "devops & ci/cd": "DevOps & CI/CD",
+            "devops": "DevOps & CI/CD",
+            "cybersecurity": "Cybersecurity",
+            "security": "Cybersecurity",
+            "manufacturing": "Manufacturing",
+            "logistics": "Logistics",
+            "marketing & design": "Marketing & Design",
+            "marketing": "Marketing & Design",
+            "legal & compliance": "Legal & Compliance",
+            "legal": "Legal & Compliance",
+        }
+        for keyword, cat_name in category_map.items():
+            if keyword in lower:
+                return cat_name
+        
+        # If "cloud service related categories"
+        if "cloud service" in lower and "categories" in lower:
+            return "Cloud & Infrastructure"
+
+        return None
+
+    def _extract_industry(self, message: str) -> Optional[str]:
+        lower = message.lower()
+        industry_map = {
+            "technology": "Technology",
+            "tech": "Technology",
+            "finance": "Finance",
+            "banking": "Finance",
+            "healthcare": "Healthcare",
+            "medical": "Healthcare",
+            "logistics": "Logistics",
+            "shipping": "Logistics",
+            "retail": "Retail",
+            "ecommerce": "Retail",
+            "manufacturing": "Manufacturing",
+            "energy": "Energy",
+            "telecom": "Telecommunications",
+        }
+        
+        # Try specific industry pattern: related to 'X' industry or X industry
+        match = re.search(r"(?:related to\s+)?['\"]?([A-Za-z]+)['\"]?\s+industry", lower)
+        if match:
+            industry_val = match.group(1).lower()
+            return industry_map.get(industry_val, industry_val.capitalize())
+
+        for keyword, industry_name in industry_map.items():
+            if keyword in lower:
+                return industry_name
+        return None
+
     def _extract_budget(self, message: str) -> Optional[float]:
         normalized = message.lower().replace(",", "")
         match = re.search(r"\$?\s*(\d+(?:\.\d+)?)\s*(k|m)?\s*(?:budget|/month|per month|monthly)?", normalized)
@@ -723,14 +869,6 @@ def parse_intent(
 ) -> Dict[str, Any]:
     """
     Quick utility function to parse intent using advanced parser.
-    
-    Args:
-        message: User request
-        config: App settings
-        context: Optional session context
-    
-    Returns:
-        Parsed intent dict
     """
     parser = IntentParser(config)
     return parser.parse(message, context)

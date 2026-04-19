@@ -25,6 +25,8 @@ def search_vendors(
     vendor_id: Optional[str] = None,
     service_tag: Optional[str] = None,
     country: Optional[str] = None,
+    industry: Optional[str] = None,
+    category: Optional[str] = None,
     limit: int = 20,
 ) -> List[Dict[str, Any]]:
     """
@@ -36,58 +38,9 @@ def search_vendors(
     with get_db_connection() as conn:
         cur = conn.cursor()
 
-        query = """
-            SELECT
-                v.id                        AS vendor_id,
-                v.name,
-                v.tier,
-                v.country,
-                v.contract_status,
-                v.website,
-                sc.name                     AS category,
-                ind.name                    AS industry,
-                vp.avg_delivery_days,
-                vp.on_time_rate,
-                vp.quality_score,
-                vp.communication_score,
-                vp.innovation_score,
-                vp.cost_competitiveness,
-                vp.defect_rate,
-                vp.total_projects_completed,
-                vp.avg_client_rating
-            FROM vendors v
-            JOIN service_categories sc  ON sc.id = v.category_id
-            JOIN industries ind         ON ind.id = v.industry_id
-            LEFT JOIN vendor_performance vp ON vp.vendor_id = v.id
-        """
-
-        filters: List[str] = []
-        params: List[Any] = []
-
-        if vendor_id:
-            filters.append("v.id = ?")
-            params.append(vendor_id)
-
-        if vendor_name:
-            filters.append("LOWER(v.name) LIKE ?")
-            params.append(f"%{vendor_name.lower()}%")
-
-        if service_tag:
-            query += (
-                " JOIN vendor_services vs ON vs.vendor_id = v.id AND vs.service_tag = ?"
-            )
-            params.insert(0 if not filters else len(params), service_tag)
-            # Insert at right position: service_tag goes into JOIN, not WHERE
-            # We need to rewrite slightly for clarity:
-
-        if country:
-            filters.append("v.country = ?")
-            params.append(country.upper())
-
         # Rebuild with service_tag handled in JOIN
-        # Clean rewrite to avoid positional confusion:
         query, params = _build_vendor_query(
-            vendor_id, vendor_name, service_tag, country
+            vendor_id, vendor_name, service_tag, country, industry, category
         )
 
         query += f" LIMIT {int(limit)}"
@@ -115,6 +68,8 @@ def _build_vendor_query(
     vendor_name: Optional[str],
     service_tag: Optional[str],
     country: Optional[str],
+    industry: Optional[str] = None,
+    category: Optional[str] = None,
 ) -> tuple[str, list]:
     """Internal helper to assemble the vendor search query safely."""
     base = """
@@ -163,6 +118,14 @@ def _build_vendor_query(
     if country:
         filters.append("v.country = ?")
         params.append(country.upper())
+
+    if industry:
+        filters.append("LOWER(ind.name) LIKE ?")
+        params.append(f"%{industry.lower()}%")
+
+    if category:
+        filters.append("LOWER(sc.name) LIKE ?")
+        params.append(f"%{category.lower()}%")
 
     sql = base + " ".join(joins)
     if filters:

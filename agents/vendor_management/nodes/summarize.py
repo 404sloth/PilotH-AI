@@ -27,70 +27,109 @@ def summarize_node(state: VendorState) -> Dict[str, Any]:
         return _summarize_vendor_search(state)
     if action == "find_best":
         return _summarize_find_best(state)
+    if action == "summarize_contract":
+        return _summarize_contract(state)
     else:
         return _summarize_assessment(state)
 
 
 # ---------------------------------------------------------------------------
 # SEARCH_VENDORS summary
+...
+def _summarize_contract(state: VendorState) -> Dict[str, Any]:
+    contract = state.get("contract_data") or {}
+    vendor_name = state.get("vendor_name") or "the vendor"
+
+    if not contract:
+        return {
+            "llm_summary": f"No active contract found for {vendor_name}.",
+            "messages": [AIMessage(content=f"No contract found for {vendor_name}.")],
+        }
+
+    context = {
+        "vendor_name": vendor_name,
+        "ref": contract.get("contract_reference"),
+        "expiry": contract.get("expiration_date"),
+        "value": f"{contract.get('total_value', 0):,} {contract.get('currency', 'USD')}",
+        "summary": contract.get("summary"),
+        "deliverables": contract.get("deliverables", []),
+        "conditions": contract.get("conditions", []),
+    }
+
+    prompt = f"""You are a legal and procurement expert. Summarize the status of the contract for '{vendor_name}'.
+
+Contract Data:
+{json.dumps(context, indent=2)}
+
+Provide a 3-4 sentence professional summary focusing on the status (active/expiring), key terms, and any upcoming milestones or renewals."""
+
+    summary = _call_llm(prompt) or f"Contract {context['ref']} for {vendor_name} is active until {context['expiry']}. Total value is {context['value']}."
+
+    return {
+        "llm_summary": summary,
+        "messages": [AIMessage(content=summary)],
+    }
 # ---------------------------------------------------------------------------
 
 
 def _summarize_vendor_search(state: VendorState) -> Dict[str, Any]:
     vendors = state.get("vendors") or []
     service_filter = state.get("service_required")
+    industry_filter = state.get("industry")
     country = state.get("country")
 
     if not vendors:
-        scope = service_filter or "the requested filters"
+        scope_parts = []
+        if service_filter: scope_parts.append(f"service '{service_filter}'")
+        if industry_filter: scope_parts.append(f"industry '{industry_filter}'")
+        if country: scope_parts.append(f"country '{country}'")
+        scope = " and ".join(scope_parts) or "the requested filters"
+        
+        summary = f"No vendors found matching {scope}."
         return {
-            "llm_summary": f"No vendors found matching {scope}.",
+            "llm_summary": summary,
             "recommendations": [
-                "Try broadening the service or country filters",
-                "Check whether additional vendors need to be onboarded",
+                "Try broadening the search terms or removing filters",
+                "Check the knowledge base for manual vendor lists",
             ],
-            "messages": [AIMessage(content="No vendors found.")],
+            "messages": [AIMessage(content=summary)],
         }
 
-    category_counts: Dict[str, int] = {}
-    service_counts: Dict[str, int] = {}
-    for vendor in vendors:
-        category = vendor.get("category") or "Unknown"
-        category_counts[category] = category_counts.get(category, 0) + 1
-        for service in vendor.get("services", []):
-            service_counts[service] = service_counts.get(service, 0) + 1
+    vendor_names = [v.get("name", "Unknown") for v in vendors]
+    
+    prompt = f"""You are a procurement analyst. We found {len(vendors)} vendors matching the search criteria.
 
-    top_services = sorted(service_counts.items(), key=lambda item: (-item[1], item[0]))[:5]
-    top_categories = sorted(category_counts.items(), key=lambda item: (-item[1], item[0]))[:3]
-    summary_bits = ", ".join(f"{name} ({count})" for name, count in top_services)
-    category_bits = ", ".join(f"{name} ({count})" for name, count in top_categories)
+Search Criteria:
+- Service: {service_filter or 'Any'}
+- Industry: {industry_filter or 'Any'}
+- Country: {country or 'Any'}
 
-    location_text = f" in {country}" if country else ""
-    if service_filter:
-        summary = (
-            f"Found {len(vendors)} vendor(s){location_text} that provide '{service_filter}'. "
-            f"Top matches include {', '.join(v.get('name', 'Unknown') for v in vendors[:5])}. "
-            f"Related service coverage in this result set: {summary_bits or service_filter}."
-        )
-    else:
-        summary = (
-            f"Found {len(vendors)} vendor(s){location_text} across {len(category_counts)} categories. "
-            f"Leading categories are {category_bits or 'not available'}. "
-            f"Most represented services are {summary_bits or 'not available'}."
-        )
+Vendor List:
+{', '.join(vendor_names)}
 
-    recommendations = [
-        "Use the vendor list to narrow down by service, region, or tier",
-        "Run a best-vendor search once you know the target service and budget",
-    ]
-    if not service_filter:
-        recommendations.append("Add a service filter to get a tighter shortlist")
+Provide a helpful 2-3 sentence summary of what was found. List the names of the top 5 vendors explicitly."""
+
+    summary = _call_llm(prompt) or _fallback_vendor_search(vendors, service_filter, industry_filter, country)
 
     return {
         "llm_summary": summary,
-        "recommendations": recommendations,
+        "recommendations": [
+            "Select a vendor for a deep-dive assessment",
+            "Use 'find_best' to rank these vendors by project requirements"
+        ],
         "messages": [AIMessage(content=summary)],
     }
+
+
+def _fallback_vendor_search(vendors: list, service: str, industry: str, country: str) -> str:
+    names = ", ".join(v.get("name") for v in vendors[:5])
+    filters = []
+    if service: filters.append(f"service '{service}'")
+    if industry: filters.append(f"industry '{industry}'")
+    if country: filters.append(f"in {country}")
+    filter_text = " matching " + " and ".join(filters) if filters else ""
+    
+    return f"Found {len(vendors)} vendor(s){filter_text}. Top matches include: {names}."
 
 
 # ---------------------------------------------------------------------------
@@ -119,22 +158,17 @@ def _summarize_find_best(state: VendorState) -> Dict[str, Any]:
 Top vendors (ranked by fit score):
 {json.dumps(ranked[:5], indent=2)}
 
-Write a concise 3-4 sentence executive recommendation explaining why the top vendor is the best choice,
-key differentiators vs. alternatives, and any caveats. Follow with 3 bullet-point action items."""
+Write a highly detailed executive recommendation. Mention the top vendor '{top.get('name')}' and their fit score of {top.get('fit_score', 0):.1f}/100.
+Explain why they are better than the runner-ups based on the data provided."""
 
     summary = _call_llm(prompt) or _fallback_find_best(top, ranked, service)
 
-    recs = [
-        f"Proceed with {top.get('name')} (fit score: {top.get('fit_score', 0):.1f}/100) as primary vendor",
-        f"Issue RFP or contract negotiation with {top.get('name')}",
-        "Set milestone and SLA review cadence before project kickoff",
-    ]
-    if len(ranked) > 1:
-        recs.append(f"Keep {ranked[1].get('name')} as backup vendor option")
-
     return {
         "llm_summary": summary,
-        "recommendations": recs,
+        "recommendations": [
+            f"Initiate engagement with {top.get('name')}",
+            "Review full scorecard comparison in the metadata results"
+        ],
         "messages": [AIMessage(content=summary)],
     }
 
@@ -142,9 +176,8 @@ key differentiators vs. alternatives, and any caveats. Follow with 3 bullet-poin
 def _fallback_find_best(top: Dict, ranked: list, service: str) -> str:
     return (
         f"For '{service}', {top.get('name')} is the top recommendation with a fit score of "
-        f"{top.get('fit_score', 0):.1f}/100. They lead on quality ({top.get('quality_score', 'N/A')}/100) "
-        f"and on-time delivery ({(top.get('on_time_rate', 0) or 0) * 100:.0f}%). "
-        f"{len(ranked)} vendors evaluated in total."
+        f"{top.get('fit_score', 0):.1f}/100. They lead on quality ({top.get('quality_score', 'N/A')}/100). "
+        f"{len(ranked)} vendors were evaluated."
     )
 
 
@@ -164,67 +197,48 @@ def _summarize_assessment(state: VendorState) -> Dict[str, Any]:
     vendor = state.get("vendor_details") or {}
     scores = state.get("evaluation_scores") or {}
     risks = state.get("risk_items") or []
-    strengths = state.get("strengths") or []
-    weaknesses = state.get("weaknesses") or []
     overall = state.get("overall_score", 0.0)
     sla_pct = state.get("sla_compliance")
+    vendor_name = vendor.get("name") or state.get("vendor_name") or "the vendor"
+
+    # Identify top strengths and weaknesses for the LLM
+    strengths = state.get("strengths") or []
+    weaknesses = state.get("weaknesses") or []
 
     context = {
-        "vendor_name": vendor.get("name", state.get("vendor_name")),
+        "vendor_name": vendor_name,
         "overall_score": overall,
         "sla_compliance": sla_pct,
         "scores": scores,
         "strengths": strengths,
         "weaknesses": weaknesses,
         "risk_count": len(risks),
-        "high_risks": [r["description"] for r in risks if r.get("severity") == "high"],
     }
 
-    prompt = f"""You are a senior vendor relationship manager. Summarise this vendor assessment for an executive audience.
+    prompt = f"""You are a senior vendor relationship manager. Summarise this vendor assessment for '{vendor_name}'.
 
 Assessment Data:
 {json.dumps(context, indent=2)}
 
-Write 3-4 sentences covering: overall vendor health, top concerns, and a clear recommendation.
-Keep it factual and actionable."""
+Write a 4-5 sentence professional summary. 
+Start by stating the overall score of {overall:.1f}/100.
+Mention specific strengths ({', '.join(strengths[:2])}) and concerns ({', '.join(weaknesses[:2])}).
+If SLA compliance is mentioned ({sla_pct}%), include it."""
 
     summary = _call_llm(prompt) or _fallback_assessment(context)
 
-    # Rule-based recommendations
-    recs = []
-    if overall < 60:
-        recs.append("Consider initiating a vendor replacement search immediately")
-    elif overall < 75:
-        recs.append("Schedule a formal Quarterly Business Review with the vendor")
-
-    high_risks = [r for r in risks if r.get("severity") == "high"]
-    if high_risks:
-        recs.append(f"Address {len(high_risks)} high-severity risk(s) within 2 weeks")
-
-    if sla_pct is not None and sla_pct < 90:
-        recs.append("Issue formal SLA breach notice and request remediation plan")
-
-    if weaknesses:
-        recs.append(
-            f"Work with vendor on improvement areas: {', '.join(weaknesses[:2])}"
-        )
-
-    if not recs:
-        recs.append("Continue standard monitoring cadence — vendor in good standing")
-
     return {
         "llm_summary": summary,
-        "recommendations": recs,
+        "recommendations": state.get("recommendations") or ["No specific recommendations at this time."],
         "messages": [AIMessage(content=summary)],
     }
 
 
 def _fallback_assessment(ctx: Dict) -> str:
+    name = ctx.get('vendor_name', 'The vendor')
     return (
-        f"{ctx.get('vendor_name', 'Vendor')} achieved an overall score of {ctx.get('overall_score', 0):.1f}/100. "
+        f"{name} achieved an overall score of {ctx.get('overall_score', 0):.1f}/100. "
         f"SLA compliance: {ctx.get('sla_compliance') or 'N/A'}%. "
-        f"Identified {ctx.get('risk_count', 0)} risk(s), "
-        f"including {len(ctx.get('high_risks', []))} high-severity. "
         f"Key strengths: {', '.join(ctx.get('strengths', [])) or 'none'}."
     )
 
@@ -238,7 +252,7 @@ def _call_llm(prompt: str) -> str | None:
     try:
         from llm.model_factory import get_llm
 
-        llm = get_llm(temperature=0.3)
+        llm = get_llm(temperature=0.4)
         response = llm.invoke([HumanMessage(content=prompt)])
         return response.content.strip()
     except Exception as e:

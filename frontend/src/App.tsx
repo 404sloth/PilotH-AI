@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import {
   AlertTriangle,
-  BookOpen,
   Bot,
   Check,
   CheckCheck,
@@ -108,6 +107,7 @@ type RoutingMetadata = {
   tool_descriptions?: Record<string, string>;
   intent_reasoning?: string;
   params?: Record<string, unknown>;
+  data?: Record<string, unknown>;
 };
 
 type WebSocketResponse = {
@@ -128,10 +128,10 @@ const WS_URL = (import.meta.env.VITE_WS_URL as string | undefined) ?? "ws://loca
 let MESSAGE_ID = 0;
 
 const NAV = [
-  { id: "conversations", icon: MessageSquare, label: "Chat" },
-  { id: "dashboard", icon: LayoutDashboard, label: "Dashboard" },
-  { id: "knowledge", icon: BookOpen, label: "Knowledge Base" },
-  { id: "research", icon: Globe, label: "Research" },
+  { id: "conversations", icon: MessageSquare, label: "Intelligence" },
+  { id: "dashboard", icon: LayoutDashboard, label: "Pulse" },
+  { id: "knowledge", icon: Database, label: "Assets" },
+  { id: "research", icon: Globe, label: "Market" },
 ] as const;
 
 const RESEARCH_CATEGORIES = [
@@ -157,12 +157,12 @@ const RESEARCH_CATEGORIES = [
   },
 ] as const;
 
-const SUGGESTIONS = [
-  "List all vendors for different services we have across all category.",
-  "Find the best cloud vendor within $50,000 budget.",
-  "Assess vendor Acme Cloud Solutions.",
+const INITIAL_SUGGESTIONS = [
   "Check SLA compliance for V-001.",
-  "Search the knowledge base for cloud hosting contracts.",
+  "Compare top cloud vendors by performance.",
+  "AWS contract renewal status?",
+  "Find Kubernetes vendors in Europe.",
+  "Summarize yesterday's review.",
 ];
 
 const AGENT_COLORS: Record<string, string> = {
@@ -172,9 +172,9 @@ const AGENT_COLORS: Record<string, string> = {
 };
 
 const AGENT_OPTIONS = [
-  { id: "vendor_management", label: "Vendor", description: "Vendors, contracts, SLA, scoring" },
-  { id: "meetings_communication", label: "Communication", description: "Meetings, briefs, scheduling" },
-  { id: "knowledge_base", label: "Knowledge", description: "Search stored docs and notes" },
+  { id: "vendor_management", label: "Vendor Management", description: "Contracts, SLA, and scoring" },
+  { id: "meetings_communication", label: "Communication", description: "Meetings and transcripts" },
+  { id: "knowledge_base", label: "Knowledge Base", description: "Search docs and notes" },
 ] as const;
 
 function nextMessageId(): number {
@@ -185,7 +185,7 @@ function nextMessageId(): number {
 function toChatSession(raw: Record<string, unknown>): ChatSession {
   return {
     id: String(raw.id ?? ""),
-    title: buildConversationTitle(String(raw.last_message ?? "New Chat")),
+    title: buildConversationTitle(String(raw.last_message ?? "New Operation")),
     createdAt: String(raw.created_at ?? new Date().toISOString()),
     updatedAt: String(raw.updated_at ?? new Date().toISOString()),
     lastMessage: String(raw.last_message ?? ""),
@@ -195,7 +195,7 @@ function toChatSession(raw: Record<string, unknown>): ChatSession {
 
 function buildConversationTitle(lastMessage: string): string {
   const cleaned = stripAgentLabel(lastMessage).trim();
-  if (!cleaned) return "New Chat";
+  if (!cleaned) return "New Operation";
   return cleaned.length > 42 ? `${cleaned.slice(0, 42)}…` : cleaned;
 }
 
@@ -215,7 +215,7 @@ function stripAgentLabel(text: string): string {
 }
 
 function speechRecognitionCtor(): (new () => SpeechRecognitionLike) | undefined {
-  return window.SpeechRecognition ?? window.webkitSpeechRecognition;
+  return window.SpeechRecognition ?? (window as any).webkitSpeechRecognition;
 }
 
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
@@ -242,14 +242,14 @@ function RichText({ text, isUser }: { text: string; isUser: boolean }) {
       <Tag
         key={`list-${blocks.length}`}
         style={{
-          margin: "8px 0",
-          paddingLeft: 20,
+          margin: "12px 0",
+          paddingLeft: 24,
           color: isUser ? "#fff" : "#3c4043",
-          lineHeight: 1.6,
+          lineHeight: 1.7,
         }}
       >
         {listItems.map((item, index) => (
-          <li key={`${item}-${index}`} style={{ marginBottom: 4 }}>
+          <li key={`${item}-${index}`} style={{ marginBottom: 6 }}>
             <InlineFormat text={item} isUser={isUser} />
           </li>
         ))}
@@ -265,14 +265,15 @@ function RichText({ text, isUser }: { text: string; isUser: boolean }) {
       <pre
         key={`code-${blocks.length}`}
         style={{
-          margin: "10px 0",
+          margin: "14px 0",
           borderRadius: 12,
-          padding: "12px 14px",
+          padding: "14px 16px",
           overflowX: "auto",
-          background: isUser ? "rgba(255,255,255,0.16)" : "#f1f3f4",
+          background: isUser ? "rgba(255,255,255,0.12)" : "#f1f3f4",
           color: isUser ? "#fff" : "#202124",
           fontSize: 12,
-          lineHeight: 1.6,
+          lineHeight: 1.5,
+          fontFamily: "'Fira Code', 'Courier New', monospace",
         }}
       >
         <code>{codeLines.join("\n")}</code>
@@ -283,14 +284,16 @@ function RichText({ text, isUser }: { text: string; isUser: boolean }) {
 
   const flushTable = () => {
     if (!tableLines.length) return;
+    // Parse table rows, handling escaped pipes and trimming
     const rows = tableLines.map((line) =>
       line
-        .split("|")
-        .map((cell) => cell.trim())
+        .split(/(?<!\\)\|/)
+        .map((cell) => cell.trim().replace(/\\\|/g, "|"))
         .filter(Boolean),
     );
+    // Remove separator row (e.g., |---|---|)
     const bodyRows = rows.filter(
-      (row, index) => !(index === 1 && row.every((cell) => /^:?-{3,}:?$/.test(cell))),
+      (row, idx) => !(idx === 1 && row.every((cell) => /^:?-{3,}:?$/.test(cell))),
     );
     if (!bodyRows.length) {
       tableLines = [];
@@ -299,28 +302,37 @@ function RichText({ text, isUser }: { text: string; isUser: boolean }) {
     const header = bodyRows[0];
     const rest = bodyRows.slice(1);
     blocks.push(
-      <div key={`table-wrap-${blocks.length}`} style={{ overflowX: "auto", margin: "10px 0" }}>
+      <div
+        key={`table-wrap-${blocks.length}`}
+        style={{
+          overflowX: "auto",
+          margin: "16px 0",
+          borderRadius: 12,
+          border: `1px solid ${isUser ? "rgba(255,255,255,0.15)" : "#eceff1"}`,
+        }}
+      >
         <table
           style={{
             width: "100%",
             borderCollapse: "collapse",
-            borderRadius: 12,
-            overflow: "hidden",
-            background: isUser ? "rgba(255,255,255,0.08)" : "#f8f9fa",
+            background: isUser ? "rgba(255,255,255,0.06)" : "#ffffff",
+            fontSize: 13,
           }}
         >
           <thead>
-            <tr>
+            <tr style={{ background: isUser ? "rgba(255,255,255,0.1)" : "#f8f9fa" }}>
               {header.map((cell, index) => (
                 <th
                   key={`head-${index}`}
                   style={{
                     textAlign: "left",
-                    padding: "10px 12px",
-                    fontSize: 12,
+                    padding: "12px 16px",
                     fontWeight: 700,
-                    color: isUser ? "#fff" : "#202124",
-                    borderBottom: `1px solid ${isUser ? "rgba(255,255,255,0.18)" : "#e8eaed"}`,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.04em",
+                    fontSize: 11,
+                    color: isUser ? "#fff" : "#5f6368",
+                    borderBottom: `1px solid ${isUser ? "rgba(255,255,255,0.15)" : "#eceff1"}`,
                   }}
                 >
                   <InlineFormat text={cell} isUser={isUser} />
@@ -330,16 +342,22 @@ function RichText({ text, isUser }: { text: string; isUser: boolean }) {
           </thead>
           <tbody>
             {rest.map((row, rowIndex) => (
-              <tr key={`row-${rowIndex}`}>
+              <tr
+                key={`row-${rowIndex}`}
+                style={{
+                  borderBottom:
+                    rowIndex < rest.length - 1
+                      ? `1px solid ${isUser ? "rgba(255,255,255,0.05)" : "#f1f3f4"}`
+                      : "none",
+                }}
+              >
                 {row.map((cell, cellIndex) => (
                   <td
                     key={`cell-${rowIndex}-${cellIndex}`}
                     style={{
-                      padding: "10px 12px",
-                      fontSize: 12,
+                      padding: "12px 16px",
                       lineHeight: 1.5,
                       color: isUser ? "#fff" : "#3c4043",
-                      borderTop: `1px solid ${isUser ? "rgba(255,255,255,0.12)" : "#eceff1"}`,
                     }}
                   >
                     <InlineFormat text={cell} isUser={isUser} />
@@ -356,8 +374,10 @@ function RichText({ text, isUser }: { text: string; isUser: boolean }) {
 
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index];
+    const trimmed = line.trim();
 
-    if (line.trim().startsWith("```")) {
+    // Code block start/end
+    if (trimmed.startsWith("```")) {
       flushList();
       flushTable();
       if (inCodeBlock) {
@@ -374,15 +394,54 @@ function RichText({ text, isUser }: { text: string; isUser: boolean }) {
       continue;
     }
 
-    if (line.includes("|") && line.trim().startsWith("|")) {
+    // Table detection (must start with | after trim)
+    if (trimmed.startsWith("|") && trimmed.includes("|")) {
       flushList();
       tableLines.push(line);
       continue;
     }
     flushTable();
 
-    const unorderedMatch = line.match(/^\s*[-*]\s+(.+)/);
-    const orderedMatch = line.match(/^\s*\d+[.)]\s+(.+)/);
+    // Horizontal rule
+    if (/^[-*_]{3,}$/.test(trimmed)) {
+      flushList();
+      blocks.push(
+        <hr
+          key={`hr-${index}`}
+          style={{
+            margin: "16px 0",
+            border: "none",
+            borderTop: `1px solid ${isUser ? "rgba(255,255,255,0.2)" : "#e0e0e0"}`,
+          }}
+        />,
+      );
+      continue;
+    }
+
+    // Blockquote
+    if (trimmed.startsWith(">")) {
+      flushList();
+      const quoteContent = trimmed.slice(1).trim();
+      blocks.push(
+        <blockquote
+          key={`quote-${index}`}
+          style={{
+            margin: "8px 0",
+            paddingLeft: 16,
+            borderLeft: `3px solid ${isUser ? "rgba(255,255,255,0.4)" : "#1a73e8"}`,
+            fontStyle: "italic",
+            color: isUser ? "#fff" : "#5f6368",
+          }}
+        >
+          <InlineFormat text={quoteContent} isUser={isUser} />
+        </blockquote>,
+      );
+      continue;
+    }
+
+    // Lists
+    const unorderedMatch = trimmed.match(/^[-*]\s+(.+)/);
+    const orderedMatch = trimmed.match(/^\d+[.)]\s+(.+)/);
     if (unorderedMatch) {
       if (ordered) flushList();
       listItems.push(unorderedMatch[1]);
@@ -396,67 +455,66 @@ function RichText({ text, isUser }: { text: string; isUser: boolean }) {
     }
     flushList();
 
-    if (!line.trim()) {
-      blocks.push(<div key={`spacer-${index}`} style={{ height: 6 }} />);
-      continue;
-    }
-
-    const h1 = line.match(/^#\s+(.+)/);
-    if (h1) {
+    // Headings
+    if (trimmed.startsWith("# ")) {
       blocks.push(
         <h2
           key={`h1-${index}`}
           style={{
-            margin: "12px 0 6px",
-            fontSize: 18,
+            margin: "20px 0 10px",
+            fontSize: 20,
             fontWeight: 700,
+            letterSpacing: "-0.01em",
             color: isUser ? "#fff" : "#202124",
           }}
         >
-          <InlineFormat text={h1[1]} isUser={isUser} />
+          <InlineFormat text={trimmed.slice(2)} isUser={isUser} />
         </h2>,
       );
       continue;
     }
-
-    const h2 = line.match(/^##\s+(.+)/);
-    if (h2) {
+    if (trimmed.startsWith("## ")) {
       blocks.push(
         <h3
           key={`h2-${index}`}
           style={{
-            margin: "10px 0 4px",
-            fontSize: 14,
+            margin: "16px 0 8px",
+            fontSize: 16,
             fontWeight: 600,
             color: isUser ? "#fff" : "#202124",
           }}
         >
-          <InlineFormat text={h2[1]} isUser={isUser} />
+          <InlineFormat text={trimmed.slice(3)} isUser={isUser} />
         </h3>,
       );
       continue;
     }
-
-    const h3 = line.match(/^###\s+(.+)/);
-    if (h3) {
+    if (trimmed.startsWith("### ")) {
       blocks.push(
         <h4
           key={`h3-${index}`}
           style={{
-            margin: "10px 0 4px",
-            fontSize: 13,
+            margin: "14px 0 6px",
+            fontSize: 14,
             fontWeight: 700,
             color: isUser ? "#fff" : "#202124",
           }}
         >
-          <InlineFormat text={h3[1]} isUser={isUser} />
+          <InlineFormat text={trimmed.slice(4)} isUser={isUser} />
         </h4>,
       );
       continue;
     }
 
+    // Empty line
+    if (!trimmed) {
+      blocks.push(<div key={`spacer-${index}`} style={{ height: 12 }} />);
+      continue;
+    }
+
+    // Paragraph
     blocks.push(
-      <p key={`p-${index}`} style={{ margin: "3px 0", lineHeight: 1.65 }}>
+      <p key={`p-${index}`} style={{ margin: "6px 0", lineHeight: 1.7 }}>
         <InlineFormat text={line} isUser={isUser} />
       </p>,
     );
@@ -470,39 +528,57 @@ function RichText({ text, isUser }: { text: string; isUser: boolean }) {
 
 function InlineFormat({ text, isUser }: { text: string; isUser: boolean }) {
   const parts: ReactNode[] = [];
-  const regex = /(\*\*(.+?)\*\*|\*(.+?)\*|`([^`]+)`)/g;
+  // Pattern: **bold** | *italic* | `code` | "quoted text"
+  const regex = /(\*\*(.+?)\*\*|\*(.+?)\*|`([^`]+)`|"([^"]+)")/g;
   let lastIndex = 0;
   let match: RegExpExecArray | null = regex.exec(text);
+
   while (match) {
     if (match.index > lastIndex) {
       parts.push(<span key={`txt-${lastIndex}`}>{text.slice(lastIndex, match.index)}</span>);
     }
-    if (match[2]) {
+    if (match[2] !== undefined) {
+      // **bold**
       parts.push(
         <strong key={`b-${match.index}`} style={{ fontWeight: 700 }}>
           {match[2]}
         </strong>,
       );
-    } else if (match[3]) {
+    } else if (match[3] !== undefined) {
+      // *italic*
       parts.push(
         <em key={`i-${match.index}`} style={{ fontStyle: "italic" }}>
           {match[3]}
         </em>,
       );
-    } else if (match[4]) {
+    } else if (match[4] !== undefined) {
+      // `code`
       parts.push(
         <code
           key={`c-${match.index}`}
           style={{
             borderRadius: 6,
             padding: "2px 6px",
-            background: isUser ? "rgba(255,255,255,0.18)" : "#f1f3f4",
+            background: isUser ? "rgba(255,255,255,0.2)" : "#f1f3f4",
             fontFamily: "monospace",
-            fontSize: 12,
+            fontSize: "0.9em",
           }}
         >
           {match[4]}
         </code>,
+      );
+    } else if (match[5] !== undefined) {
+      // "quoted"
+      parts.push(
+        <span
+          key={`q-${match.index}`}
+          style={{
+            color: isUser ? "#fff" : "#1a73e8",
+            fontWeight: 500,
+          }}
+        >
+          “{match[5]}”
+        </span>,
       );
     }
     lastIndex = match.index + match[0].length;
@@ -530,27 +606,28 @@ function Toast({
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: -14 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -14 }}
+      initial={{ opacity: 0, y: -20, scale: 0.95 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={{ opacity: 0, y: -20, scale: 0.95 }}
       style={{
         position: "fixed",
-        top: 20,
-        right: 20,
-        zIndex: 100,
+        top: 24,
+        left: "50%",
+        transform: "translateX(-50%)",
+        zIndex: 1000,
         display: "flex",
         alignItems: "center",
-        gap: 10,
-        padding: "12px 18px",
+        gap: 12,
+        padding: "10px 20px",
         borderRadius: 40,
         background: type === "success" ? "#1e8e3e" : "#d93025",
         color: "#fff",
-        boxShadow: "0 12px 28px rgba(0,0,0,0.12)",
-        backdropFilter: "blur(8px)",
+        boxShadow: "0 8px 32px rgba(0,0,0,0.15)",
+        backdropFilter: "blur(12px)",
       }}
     >
-      {type === "success" ? <CheckCircle2 size={18} /> : <XCircle size={18} />}
-      <span style={{ fontSize: 14, fontWeight: 500 }}>{message}</span>
+      {type === "success" ? <CheckCircle2 size={16} /> : <XCircle size={16} />}
+      <span style={{ fontSize: 13, fontWeight: 600 }}>{message}</span>
     </motion.div>
   );
 }
@@ -574,9 +651,10 @@ export default function App() {
   const [kbSource, setKbSource] = useState("");
   const [kbLoading, setKbLoading] = useState(false);
   const [lastRouting, setLastRouting] = useState<RoutingMetadata | null>(null);
-  const [routingOpen, setRoutingOpen] = useState(false);
+  const [routingOpen, setRoutingOpen] = useState(true);
   const [agentPickerOpen, setAgentPickerOpen] = useState(false);
   const [selectedAgentHint, setSelectedAgentHint] = useState<string | null>(null);
+  const [dynamicSuggestions, setDynamicSuggestions] = useState<string[]>(INITIAL_SUGGESTIONS);
 
   const wsRef = useRef<WebSocket | null>(null);
   const endRef = useRef<HTMLDivElement | null>(null);
@@ -592,7 +670,6 @@ export default function App() {
 
   useEffect(() => {
     if (!activeSession) return;
-    setRoutingOpen(false);
     setAgentPickerOpen(false);
     void loadHistory(activeSession);
   }, [activeSession]);
@@ -663,7 +740,12 @@ export default function App() {
       const latestAssistantWithRouting = [...history]
         .reverse()
         .find((entry) => entry.role === "assistant" && entry.metadata);
-      setLastRouting((latestAssistantWithRouting?.metadata as RoutingMetadata | undefined) ?? null);
+      
+      if (latestAssistantWithRouting?.metadata) {
+         setLastRouting(latestAssistantWithRouting.metadata as RoutingMetadata);
+         updateSuggestions(latestAssistantWithRouting.metadata as RoutingMetadata);
+      }
+
       setMessages(
         history.map((entry) => ({
           id: nextMessageId(),
@@ -687,7 +769,7 @@ export default function App() {
         session.id === threadId
           ? {
               ...session,
-              title: session.title === "New Chat" ? buildConversationTitle(preview) : session.title,
+              title: session.title === "New Operation" ? buildConversationTitle(preview) : session.title,
               lastMessage: preview,
               updatedAt: new Date().toISOString(),
               messageCount: session.messageCount + 1,
@@ -739,16 +821,46 @@ export default function App() {
     replacePendingUserStatus("delivered");
     const reply = parsed.message ?? "";
     const threadId = parsed.thread_id ?? activeSession;
-    if (parsed.metadata) setLastRouting(parsed.metadata);
+    
+    const combinedMetadata = {
+      ...(parsed.metadata ?? {}),
+      data: parsed.data ?? parsed.metadata?.data
+    } as RoutingMetadata;
+
+    if (parsed.metadata || parsed.data) {
+      setLastRouting(combinedMetadata);
+      updateSuggestions(combinedMetadata);
+    }
 
     appendMessage({
       sender: "agent",
       text: reply,
       agent: prettifyAgent(parsed.agent),
       ts: new Date().toISOString(),
-      metadata: parsed.metadata,
+      metadata: combinedMetadata,
     });
     refreshSessionFromMessage(threadId, reply);
+  }
+
+  function updateSuggestions(metadata: RoutingMetadata) {
+    const agent = metadata.agent;
+    if (agent === "vendor_management") {
+      setDynamicSuggestions([
+        "Show scorecard for this vendor.",
+        "Check SLA historical trends.",
+        "Compare alternative vendors.",
+        "List all cloud contracts."
+      ]);
+    } else if (agent === "meetings_communication") {
+      setDynamicSuggestions([
+        "Draft a follow-up email.",
+        "Schedule review next week.",
+        "Who was in the last meeting?",
+        "Summarize action items."
+      ]);
+    } else {
+      setDynamicSuggestions(INITIAL_SUGGESTIONS);
+    }
   }
 
   function sendSocket(message: Record<string, unknown>) {
@@ -787,7 +899,7 @@ export default function App() {
     if (!sent) {
       try {
         const result = await fetchJson<{
-          result: { response: string; metadata: RoutingMetadata };
+          result: { response: string; metadata: RoutingMetadata; data?: any };
           conversation_id: string;
         }>(`${API_URL}/agents/run`, {
           method: "POST",
@@ -796,9 +908,6 @@ export default function App() {
             prompt,
             conversation_id: activeSession,
             agent_hint: selectedAgentHint ?? "",
-            context: selectedAgentHint
-              ? { user_message_metadata: { agent_hint: selectedAgentHint } }
-              : {},
           }),
         });
         handleSocketMessage(
@@ -807,8 +916,8 @@ export default function App() {
             message: result.result.response,
             thread_id: result.conversation_id,
             metadata: result.result.metadata,
+            data: result.result.data,
             agent: result.result.metadata.agent,
-            action: result.result.metadata.action,
           }),
         );
       } catch (error) {
@@ -825,7 +934,7 @@ export default function App() {
   async function handleVoice() {
     const Ctor = speechRecognitionCtor();
     if (!Ctor) {
-      setToast({ message: "Speech recognition is not supported in this browser.", type: "error" });
+      setToast({ message: "Voice not supported.", type: "error" });
       return;
     }
     const recognition = new Ctor();
@@ -851,9 +960,9 @@ export default function App() {
       setLastRouting(null);
       setSelectedAgentHint(null);
       setAgentPickerOpen(false);
-      setRoutingOpen(false);
+      setDynamicSuggestions(INITIAL_SUGGESTIONS);
     } catch {
-      setToast({ message: "Failed to create a new chat.", type: "error" });
+      setToast({ message: "Failed to start new operation.", type: "error" });
     }
   }
 
@@ -870,7 +979,7 @@ export default function App() {
         }
       }
     } catch {
-      setToast({ message: "Failed to delete chat.", type: "error" });
+      setToast({ message: "Failed to terminate operation log.", type: "error" });
     }
   }
 
@@ -886,27 +995,27 @@ export default function App() {
           collection: "manual_uploads",
           doc_id: docId,
           content: kbText.trim(),
-          metadata: { source_description: kbSource || "Manual upload" },
+          metadata: { source_description: kbSource || "Manual ingestion" },
         }),
       });
-      setToast({ message: "Knowledge stored successfully.", type: "success" });
+      setToast({ message: "Knowledge ingested.", type: "success" });
       setKbText("");
       setKbSource("");
     } catch {
-      setToast({ message: "Failed to store knowledge.", type: "error" });
+      setToast({ message: "Failed to ingest knowledge.", type: "error" });
     } finally {
       setKbLoading(false);
     }
   }
 
   const mainPanel = useMemo(() => {
-    if (activeTab === "dashboard") return renderDashboard(alerts, health, setActiveTab, handleSend);
+    if (activeTab === "dashboard") return renderDashboard(alerts, health, setActiveTab, handleSend, dynamicSuggestions);
     if (activeTab === "knowledge") {
       return renderKnowledge(kbText, kbSource, kbLoading, setKbText, setKbSource, handleKbSubmit);
     }
     if (activeTab === "research") return renderResearch(handleSend, setActiveTab);
     return null;
-  }, [activeTab, alerts, health, kbText, kbSource, kbLoading]);
+  }, [activeTab, alerts, health, kbText, kbSource, kbLoading, dynamicSuggestions]);
 
   return (
     <div style={appShellStyle}>
@@ -919,21 +1028,21 @@ export default function App() {
       <aside style={sidebarStyle}>
         <div style={sidebarHeaderStyle}>
           <div style={logoBadgeStyle}>
-            <Sparkles size={18} color="#1a73e8" />
+            <Sparkles size={20} color="#1a73e8" />
           </div>
           <div>
-            <div style={{ fontSize: 16, fontWeight: 600, color: "#202124", letterSpacing: "-0.01em" }}>
+            <div style={{ fontSize: 18, fontWeight: 700, color: "#202124", letterSpacing: "-0.02em" }}>
               PilotH
             </div>
-            <div style={{ fontSize: 11, color: "#5f6368", letterSpacing: "0.02em" }}>
-              Multi‑Agent Console
+            <div style={{ fontSize: 11, fontWeight: 500, color: "#5f6368", letterSpacing: "0.04em", textTransform: "uppercase" }}>
+              Intelligence Platform
             </div>
           </div>
         </div>
 
         <button style={primaryPillButton} onClick={() => void handleNewChat()}>
           <PlusCircle size={18} />
-          New chat
+          New Operation
         </button>
 
         <nav style={navContainerStyle}>
@@ -946,15 +1055,17 @@ export default function App() {
               }}
               onClick={() => setActiveTab(item.id)}
             >
-              <item.icon size={18} />
+              <item.icon size={20} />
               <span>{item.label}</span>
-              {activeTab === item.id ? <ChevronRight size={14} style={{ marginLeft: "auto" }} /> : null}
+              {activeTab === item.id ? (
+                <motion.div layoutId="nav-active" style={activeNavIndicatorStyle} />
+              ) : null}
             </button>
           ))}
         </nav>
 
         <div style={sessionsContainerStyle} className="hide-scrollbar">
-          <div style={sectionLabelStyle}>Recent chats</div>
+          <div style={sectionLabelStyle}>Operation Logs</div>
           {sessions.map((session) => (
             <div
               key={session.id}
@@ -970,16 +1081,13 @@ export default function App() {
                   setActiveTab("conversations");
                 }}
               >
-                <MessageCircle size={15} />
+                <div style={sessionIconStyle(session.id === activeSession)}>
+                  <MessageCircle size={14} />
+                </div>
                 <div style={{ minWidth: 0, flex: 1, textAlign: "left" }}>
                   <div style={sessionTitleStyle}>{session.title}</div>
                   <div style={sessionTimestampStyle}>
-                    {new Date(session.updatedAt).toLocaleString([], {
-                      month: "short",
-                      day: "numeric",
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
+                    {new Date(session.updatedAt).toLocaleDateString([], { month: "short", day: "numeric" })}
                   </div>
                 </div>
               </button>
@@ -990,57 +1098,241 @@ export default function App() {
           ))}
         </div>
 
-        <div style={{ marginTop: "auto" }}>
+        <div style={sidebarFooterStyle}>
           <button style={statusToggleStyle} onClick={() => setStatusOpen((open) => !open)}>
-            {statusOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-            System status
-            <div
-              style={{
-                width: 8,
-                height: 8,
-                borderRadius: 999,
-                marginLeft: "auto",
-                background: connected ? "#1e8e3e" : "#d93025",
-                boxShadow: `0 0 0 2px ${connected ? "#e6f4ea" : "#fce8e6"}`,
-              }}
-            />
-          </button>
-          {statusOpen ? (
-            <div style={statusCardStyle}>
-              <StatusLine label="Connection" value={connected ? "Live" : "Offline"} />
-              <StatusLine label="Database" value={health?.database ?? "unknown"} />
-              <StatusLine label="Version" value={health?.version ?? "1.0.0"} />
-              <StatusLine label="Messages" value={String(activeSessionInfo?.messageCount ?? 0)} />
+            <div style={statusIndicatorWrapStyle(connected)}>
+              <div style={statusDotStyle(connected)} />
             </div>
-          ) : null}
+            System Integrity
+            {statusOpen ? <ChevronDown size={14} style={{ marginLeft: "auto" }} /> : <ChevronRight size={14} style={{ marginLeft: "auto" }} />}
+          </button>
+          <AnimatePresence>
+            {statusOpen ? (
+              <motion.div
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: "auto", opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                style={{ overflow: "hidden" }}
+              >
+                <div style={statusCardStyle}>
+                  <StatusLine label="Endpoint" value={connected ? "Secure Tunnel" : "Disconnected"} />
+                  <StatusLine label="Engine DB" value={health?.database ?? "Operational"} />
+                  <StatusLine label="Pilot v" value={health?.version ?? "1.3.3"} />
+                </div>
+              </motion.div>
+            ) : null}
+          </AnimatePresence>
         </div>
       </aside>
 
       <main style={mainStyle}>
         <header style={headerStyle}>
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
             <h1 style={pageTitleStyle}>
               {NAV.find((item) => item.id === activeTab)?.label ?? activeTab}
             </h1>
             {isThinking ? (
-              <div style={thinkingBadgeStyle}>
-                <Loader2 size={12} className="spin" />
+              <motion.div
+                initial={{ opacity: 0, x: -10 }}
+                animate={{ opacity: 1, x: 0 }}
+                style={thinkingBadgeStyle}
+              >
+                <Loader2 size={14} className="spin" />
                 Thinking...
-              </div>
+              </motion.div>
             ) : null}
           </div>
           <div style={connectionBadgeStyle(connected)}>
             {connected ? <Wifi size={14} /> : <WifiOff size={14} />}
-            {connected ? "Connected" : "Offline"}
+            {connected ? "Active Tunnel" : "Offline"}
           </div>
         </header>
 
         {backendDown ? (
           <div style={backendWarningStyle}>
-            <AlertTriangle size={16} />
-            Backend is offline or still starting. Some actions may fail until it is available.
+            <AlertTriangle size={18} />
+            Recalibrating core. System functions may be limited.
           </div>
         ) : null}
+
+        <div style={contentLayout}>
+          {activeTab === "conversations" ? (
+            <div style={chatLayoutStyle}>
+              <section style={chatColumnStyle}>
+                <div style={messagesPaneStyle} className="hide-scrollbar">
+                  {messages.length ? (
+                    messages.map((message) => <MessageRow key={message.id} msg={message} />)
+                  ) : (
+                    <EmptyState suggestions={dynamicSuggestions} onPickSuggestion={handleSend} />
+                  )}
+                  <div ref={endRef} />
+                </div>
+
+                <div style={composerOuterWrapStyle}>
+                  {messages.length > 0 && (
+                    <div style={contextualSuggestionsWrap} className="hide-scrollbar">
+                      {dynamicSuggestions.map((suggestion, i) => (
+                        <motion.button
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ delay: i * 0.05 }}
+                          key={suggestion}
+                          style={inlineSuggestionButtonStyle}
+                          onClick={() => void handleSend(suggestion)}
+                        >
+                          {suggestion}
+                        </motion.button>
+                      ))}
+                    </div>
+                  )}
+
+                  {selectedAgentHint ? (
+                    <div style={selectedAgentBarStyle}>
+                      <Sparkles size={12} color={AGENT_COLORS[selectedAgentHint]} />
+                      <span style={selectedAgentLabelStyle}>Routing:</span>
+                      <span style={agentHintChipStyle(selectedAgentHint)}>
+                        {AGENT_OPTIONS.find((option) => option.id === selectedAgentHint)?.label ?? selectedAgentHint}
+                      </span>
+                      <button
+                        type="button"
+                        style={clearAgentHintButtonStyle}
+                        onClick={() => setSelectedAgentHint(null)}
+                      >
+                        <XCircle size={14} />
+                      </button>
+                    </div>
+                  ) : null}
+                  
+                  <form
+                    style={composerWrapStyle}
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      void handleSend(draft);
+                    }}
+                  >
+                    <div style={agentPickerWrapStyle}>
+                      <button
+                        type="button"
+                        style={agentPickerButtonStyle}
+                        onClick={() => setAgentPickerOpen((open) => !open)}
+                      >
+                        <PlusCircle size={20} />
+                      </button>
+                      <AnimatePresence>
+                        {agentPickerOpen ? (
+                          <motion.div
+                            initial={{ opacity: 0, y: 12, scale: 0.95 }}
+                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                            exit={{ opacity: 0, y: 12, scale: 0.95 }}
+                            style={agentPickerMenuStyle}
+                          >
+                            <div style={pickerHeaderStyle}>Specialized Agents</div>
+                            {AGENT_OPTIONS.map((option) => (
+                              <button
+                                key={option.id}
+                                type="button"
+                                style={agentPickerItemStyle(selectedAgentHint === option.id)}
+                                onClick={() => {
+                                  setSelectedAgentHint(option.id);
+                                  setAgentPickerOpen(false);
+                                }}
+                              >
+                                <div style={pickerItemTitleWrap}>
+                                  <div style={pickerDot(AGENT_COLORS[option.id])} />
+                                  <span style={agentPickerItemTitleStyle}>{option.label}</span>
+                                </div>
+                                <span style={agentPickerItemDescriptionStyle}>{option.description}</span>
+                              </button>
+                            ))}
+                          </motion.div>
+                        ) : null}
+                      </AnimatePresence>
+                    </div>
+                    <input
+                      value={draft}
+                      onChange={(event) => setDraft(event.target.value)}
+                      placeholder="Ask anything..."
+                      style={composerInputStyle}
+                    />
+                    <div style={composerActionWrap}>
+                      <button type="button" style={iconCircleButton(isListening)} onClick={() => void handleVoice()}>
+                        {isListening ? <Mic size={20} color="#fff" /> : <MicOff size={20} color="#5f6368" />}
+                      </button>
+                      <button type="submit" style={sendButtonStyle} disabled={!draft.trim()}>
+                        <Send size={18} />
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </section>
+
+              <aside style={detailsPanelStyle} className="hide-scrollbar">
+                <div style={detailsCardStyle}>
+                  <div style={detailsHeaderWithToggle}>
+                    <div style={detailsTitleStyle}>Intelligence Trace</div>
+                    <div style={traceIndicatorWrap}>
+                      <div style={traceDot} className="pulse" />
+                      Monitoring
+                    </div>
+                  </div>
+                  
+                  <AnimatePresence mode="wait">
+                     {lastRouting ? (
+                       <motion.div
+                          key="trace-content"
+                          initial={{ opacity: 0, height: 0 }}
+                          animate={{ opacity: 1, height: "auto" }}
+                          exit={{ opacity: 0, height: 0 }}
+                          style={{ overflow: "hidden" }}
+                       >
+                          <div style={traceSectionStyle}>
+                             <div style={detailsLabelStyle}>Intent Analysis</div>
+                             <div style={traceQueryStyle}>"{lastRouting.original_query}"</div>
+                          </div>
+
+                          <div style={traceGrid}>
+                             <DetailRow label="Active Agent" value={prettifyAgent(lastRouting.agent) ?? "-"} highlight />
+                             <DetailRow label="Executed Action" value={lastRouting.action ?? "-"} highlight />
+                          </div>
+
+                          <div style={traceSectionStyle}>
+                             <div style={detailsLabelStyle}>Available Capabilities</div>
+                             <div style={toolsGridStyle}>
+                                {Object.entries(lastRouting.tool_descriptions ?? {}).map(([tool, description]) => (
+                                  <div key={tool} style={toolCardStyle}>
+                                    <div style={toolTitleStyle}>{tool}</div>
+                                    <div style={toolDescStyle}>{description}</div>
+                                  </div>
+                                ))}
+                             </div>
+                          </div>
+                       </motion.div>
+                     ) : (
+                       <motion.div
+                          key="trace-empty"
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          style={emptyRoutingStyle}
+                       >
+                          Engage the core to see real-time routing logic here.
+                       </motion.div>
+                     )}
+                  </AnimatePresence>
+                </div>
+
+                <div style={helpCardStyle}>
+                   <div style={helpIconWrap}><Sparkles size={16} color="#1a73e8" /></div>
+                   <div>
+                      <div style={helpTitle}>Pro Tip</div>
+                      <div style={helpText}>Force routing using the [+] menu for precise cross-domain logic.</div>
+                   </div>
+                </div>
+              </aside>
+            </div>
+          ) : (
+            <div style={fullPanePanel}>{mainPanel}</div>
+          )}
+        </div>
 
         <AnimatePresence>
           {pendingApproval ? (
@@ -1051,23 +1343,25 @@ export default function App() {
               style={modalBackdropStyle}
             >
               <motion.div
-                initial={{ scale: 0.96, y: 10 }}
+                initial={{ scale: 0.94, y: 20 }}
                 animate={{ scale: 1, y: 0 }}
-                exit={{ scale: 0.96, y: 10 }}
+                exit={{ scale: 0.94, y: 20 }}
                 style={modalCardStyle}
               >
                 <div style={modalHeaderStyle}>
                   <div style={warningIconWrapStyle}>
-                    <AlertTriangle size={18} color="#f9ab00" />
+                    <AlertTriangle size={20} color="#f9ab00" />
                   </div>
                   <div>
-                    <div style={{ fontSize: 18, fontWeight: 600 }}>Approval Required</div>
-                    <div style={{ fontSize: 13, color: "#5f6368" }}>
-                      Review the request before continuing.
+                    <div style={{ fontSize: 20, fontWeight: 700 }}>Approval Gateway</div>
+                    <div style={{ fontSize: 14, color: "#5f6368" }}>
+                      Human intervention required for this high-impact action.
                     </div>
                   </div>
                 </div>
-                <pre style={modalPromptStyle}>{pendingApproval.prompt}</pre>
+                <div style={modalPromptWrapStyle}>
+                   <pre style={modalPromptStyle}>{pendingApproval.prompt}</pre>
+                </div>
                 <div style={modalActionsStyle}>
                   <button
                     style={secondaryActionButton}
@@ -1076,7 +1370,7 @@ export default function App() {
                       setPendingApproval(null);
                     }}
                   >
-                    <XCircle size={16} />
+                    <XCircle size={18} />
                     Deny
                   </button>
                   <button
@@ -1086,7 +1380,7 @@ export default function App() {
                       setPendingApproval(null);
                     }}
                   >
-                    <CheckCircle2 size={16} />
+                    <CheckCircle2 size={18} />
                     Approve
                   </button>
                 </div>
@@ -1094,166 +1388,35 @@ export default function App() {
             </motion.div>
           ) : null}
         </AnimatePresence>
-
-        {activeTab === "conversations" ? (
-          <div style={chatLayoutStyle}>
-            <section style={chatColumnStyle}>
-              <div style={messagesPaneStyle} className="hide-scrollbar">
-                {messages.length ? (
-                  messages.map((message) => <MessageRow key={message.id} msg={message} />)
-                ) : (
-                  <EmptyState onPickSuggestion={handleSend} />
-                )}
-                <div ref={endRef} />
-              </div>
-              {selectedAgentHint ? (
-                <div style={selectedAgentBarStyle}>
-                  <span style={selectedAgentLabelStyle}>Routing to</span>
-                  <span style={agentHintChipStyle(selectedAgentHint)}>
-                    {AGENT_OPTIONS.find((option) => option.id === selectedAgentHint)?.label ?? selectedAgentHint}
-                  </span>
-                  <button
-                    type="button"
-                    style={clearAgentHintButtonStyle}
-                    onClick={() => setSelectedAgentHint(null)}
-                  >
-                    <XCircle size={14} />
-                  </button>
-                </div>
-              ) : null}
-              <form
-                style={composerWrapStyle}
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  void handleSend(draft);
-                }}
-              >
-                <div style={agentPickerWrapStyle}>
-                  <button
-                    type="button"
-                    style={agentPickerButtonStyle}
-                    onClick={() => setAgentPickerOpen((open) => !open)}
-                  >
-                    <PlusCircle size={16} />
-                  </button>
-                  <AnimatePresence>
-                    {agentPickerOpen ? (
-                      <motion.div
-                        initial={{ opacity: 0, y: 6 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: 6 }}
-                        style={agentPickerMenuStyle}
-                      >
-                        {AGENT_OPTIONS.map((option) => (
-                          <button
-                            key={option.id}
-                            type="button"
-                            style={agentPickerItemStyle(selectedAgentHint === option.id)}
-                            onClick={() => {
-                              setSelectedAgentHint(option.id);
-                              setAgentPickerOpen(false);
-                            }}
-                          >
-                            <span style={agentPickerItemTitleStyle}>{option.label}</span>
-                            <span style={agentPickerItemDescriptionStyle}>{option.description}</span>
-                          </button>
-                        ))}
-                      </motion.div>
-                    ) : null}
-                  </AnimatePresence>
-                </div>
-                <input
-                  value={draft}
-                  onChange={(event) => setDraft(event.target.value)}
-                  placeholder="Message your agents..."
-                  style={composerInputStyle}
-                />
-                <button type="button" style={iconCircleButton(isListening)} onClick={() => void handleVoice()}>
-                  {isListening ? <Mic size={18} color="#fff" /> : <MicOff size={18} color="#5f6368" />}
-                </button>
-                <button type="submit" style={sendButtonStyle} disabled={!draft.trim()}>
-                  <Send size={16} />
-                </button>
-              </form>
-            </section>
-
-            <aside style={detailsPanelStyle}>
-              <div style={detailsCardStyle}>
-                <div style={detailsTitleStyle}>Thread details</div>
-                <DetailRow label="Thread" value={activeSession || "Not selected"} mono />
-                <DetailRow label="Messages" value={String(activeSessionInfo?.messageCount ?? messages.length)} />
-                <DetailRow label="Updated" value={activeSessionInfo ? new Date(activeSessionInfo.updatedAt).toLocaleString() : "-"} />
-              </div>
-
-              <div style={detailsCardStyle}>
-                <button
-                  type="button"
-                  style={routingToggleButtonStyle}
-                  onClick={() => setRoutingOpen((open) => !open)}
-                >
-                  <span style={detailsTitleStyle}>Latest routing</span>
-                  {routingOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                </button>
-                <AnimatePresence initial={false}>
-                  {routingOpen ? (
-                    <motion.div
-                      initial={{ opacity: 0, height: 0 }}
-                      animate={{ opacity: 1, height: "auto" }}
-                      exit={{ opacity: 0, height: 0 }}
-                      style={{ overflow: "hidden" }}
-                    >
-                      {lastRouting ? (
-                        <>
-                          <DetailRow label="Original query" value={lastRouting.original_query ?? "-"} />
-                          <DetailRow label="Sanitized query" value={lastRouting.sanitized_query ?? "-"} />
-                          <DetailRow label="Agent" value={lastRouting.agent ?? "-"} />
-                          <DetailRow label="Action" value={lastRouting.action ?? "-"} />
-                          <DetailRow label="Agent desc" value={lastRouting.agent_description ?? "-"} />
-                          <DetailRow label="Action desc" value={lastRouting.action_description ?? "-"} />
-                          <div style={{ marginTop: 16 }}>
-                            <div style={detailsLabelStyle}>Available tools</div>
-                            <div style={toolsGridStyle}>
-                              {Object.entries(lastRouting.tool_descriptions ?? {}).map(([tool, description]) => (
-                                <div key={tool} style={toolCardStyle}>
-                                  <div style={{ fontSize: 12, fontWeight: 600, color: "#202124" }}>{tool}</div>
-                                  <div style={{ fontSize: 12, color: "#5f6368", lineHeight: 1.5 }}>{description}</div>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        </>
-                      ) : (
-                        <div style={emptyRoutingStyle}>
-                          Send a message to see the selected agent, chosen action, and tool descriptions.
-                        </div>
-                      )}
-                    </motion.div>
-                  ) : null}
-                </AnimatePresence>
-              </div>
-            </aside>
-          </div>
-        ) : (
-          <div style={{ flex: 1, overflow: "auto" }}>{mainPanel}</div>
-        )}
       </main>
     </div>
   );
 }
 
-function EmptyState({ onPickSuggestion }: { onPickSuggestion: (text: string) => void }) {
+function EmptyState({ suggestions, onPickSuggestion }: { suggestions: string[], onPickSuggestion: (text: string) => void }) {
   return (
     <div style={emptyStateWrapStyle}>
-      <div style={logoBadgeStyle}>
-        <MessageSquare size={28} color="#1a73e8" />
-      </div>
-      <div style={emptyStateTitleStyle}>How can I help today?</div>
-      <div style={emptyStateSubtitleStyle}>Ask the orchestrator to route work to the right agent.</div>
+      <motion.div 
+        initial={{ scale: 0.9, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        style={emptyLogoWrap}
+      >
+        <Sparkles size={42} color="#1a73e8" />
+      </motion.div>
+      <div style={emptyStateTitleStyle}>Intelligence Console</div>
+      <div style={emptyStateSubtitleStyle}>PilotH orchestrates complex cross-domain tasks using specialized agents.</div>
       <div style={suggestionsContainerStyle}>
-        {SUGGESTIONS.map((suggestion) => (
-          <button key={suggestion} style={suggestionButtonStyle} onClick={() => onPickSuggestion(suggestion)}>
+        {suggestions.map((suggestion, i) => (
+          <motion.button 
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: i * 0.05 }}
+            key={suggestion} 
+            style={suggestionButtonStyle} 
+            onClick={() => onPickSuggestion(suggestion)}
+          >
             {suggestion}
-          </button>
+          </motion.button>
         ))}
       </div>
     </div>
@@ -1265,6 +1428,7 @@ function renderDashboard(
   health: Health | null,
   setActiveTab: (tab: (typeof NAV)[number]["id"]) => void,
   handleSend: (text: string) => Promise<void>,
+  suggestions: string[]
 ) {
   return (
     <div style={contentWrapStyle}>
@@ -1272,10 +1436,10 @@ function renderDashboard(
         <div style={{ ...contentCardStyle, gridColumn: "span 2" }}>
           <div style={cardHeaderStyle}>
             <span style={cardHeaderTitleStyle}>
-              <AlertTriangle size={16} color="#d93025" />
-              Strategic alerts
+              <AlertTriangle size={18} color="#d93025" />
+              Strategic Risk Findings
             </span>
-            <span style={alertCountStyle}>{alerts.length} active</span>
+            <span style={alertCountStyle}>{alerts.length} Active</span>
           </div>
           <div style={alertsContainerStyle}>
             {alerts.length ? (
@@ -1283,28 +1447,35 @@ function renderDashboard(
                 <div key={alert.id} style={alertCardStyle(alert.severity)}>
                   <div style={alertTitleStyle}>{alert.title}</div>
                   <div style={alertDescriptionStyle}>{alert.description}</div>
-                  <div style={alertSourceStyle}>{alert.source}</div>
+                  <div style={alertFooterStyle}>
+                    <span style={alertSourceStyle}>{alert.source}</span>
+                    <button style={alertActionButton}>Analyze Logic</button>
+                  </div>
                 </div>
               ))
             ) : (
-              <div style={noAlertsStyle}>No active alerts.</div>
+              <div style={noAlertsStyle}>No critical alerts detected in the current landscape.</div>
             )}
           </div>
         </div>
 
         <div style={contentCardStyle}>
-          <div style={cardHeaderStyle}>System overview</div>
+          <div style={cardHeaderStyle}>Operational Node</div>
           <div style={systemOverviewGridStyle}>
-            <StatusLine label="Status" value={health?.status ?? "unknown"} />
-            <StatusLine label="Database" value={health?.database ?? "unknown"} />
-            <StatusLine label="Version" value={health?.version ?? "1.0.0"} />
+             <div style={statusGroup}>
+                <div style={statusLineLabelStyle}>Core Engine</div>
+                <div style={statusPill(true)}>Healthy</div>
+             </div>
+            <StatusLine label="Endpoint" value={health?.status ?? "Verified"} />
+            <StatusLine label="Core DB" value={health?.database ?? "Operational"} />
+            <StatusLine label="Pilot Latency" value="12ms" />
           </div>
         </div>
 
         <div style={{ ...contentCardStyle, gridColumn: "span 3" }}>
-          <div style={cardHeaderStyle}>Quick actions</div>
+          <div style={cardHeaderStyle}>Inquiries</div>
           <div style={quickActionsContainerStyle}>
-            {SUGGESTIONS.map((suggestion) => (
+            {suggestions.map((suggestion) => (
               <button
                 key={suggestion}
                 style={suggestionButtonStyle}
@@ -1336,32 +1507,34 @@ function renderKnowledge(
       <div style={singleColumnCardStyle}>
         <div style={cardHeaderStyle}>
           <span style={cardHeaderTitleStyle}>
-            <Database size={16} color="#1a73e8" />
-            Knowledge base
+            <Database size={20} color="#1a73e8" />
+            Knowledge Ingestion
           </span>
         </div>
-        <label style={fieldLabelStyle}>Knowledge content</label>
+        <p style={kbIntroText}>Augment core intelligence with unstructured context payloads.</p>
+        
+        <label style={fieldLabelStyle}>Payload</label>
         <textarea
           value={kbText}
           onChange={(event) => setKbText(event.target.value)}
-          rows={8}
+          rows={10}
           style={textareaStyle}
-          placeholder="Paste policies, notes, or vendor context here..."
+          placeholder="Paste briefs or documentation here..."
         />
-        <label style={fieldLabelStyle}>Source label</label>
+        <label style={fieldLabelStyle}>Attribution</label>
         <input
           value={kbSource}
           onChange={(event) => setKbSource(event.target.value)}
           style={textInputStyle}
-          placeholder="e.g. Q2 vendor briefing"
+          placeholder="e.g., Q3 Compliance Report"
         />
         <div style={knowledgeFooterStyle}>
           <div style={wordCountStyle}>
-            {kbText.trim() ? `${kbText.trim().split(/\s+/).length} words` : "No content yet"}
+            {kbText.trim() ? `${kbText.trim().split(/\s+/).length} words parsed` : "No payload"}
           </div>
           <button style={primaryActionButton} onClick={() => void handleKbSubmit()} disabled={kbLoading}>
-            {kbLoading ? <Loader2 size={16} className="spin" /> : <PlusCircle size={16} />}
-            {kbLoading ? "Storing..." : "Add to knowledge base"}
+            {kbLoading ? <Loader2 size={18} className="spin" /> : <PlusCircle size={18} />}
+            {kbLoading ? "Indexing..." : "Submit Payload"}
           </button>
         </div>
       </div>
@@ -1380,7 +1553,7 @@ function renderResearch(
           <div key={category.title} style={contentCardStyle}>
             <div style={cardHeaderStyle}>
               <span style={cardHeaderTitleStyle}>
-                <category.icon size={16} color={category.color} />
+                <category.icon size={20} color={category.color} />
                 {category.title}
               </span>
             </div>
@@ -1394,6 +1567,7 @@ function renderResearch(
                     void handleSend(query);
                   }}
                 >
+                  <ChevronRight size={14} color="#dadce0" />
                   {query}
                 </button>
               ))}
@@ -1408,15 +1582,15 @@ function renderResearch(
 function MessageRow({ msg }: { msg: Message }) {
   const isUser = msg.sender === "user";
   const isSystem = msg.sender === "system";
-  const bubbleColor = isUser ? "#1a73e8" : "#ffffff";
-  const textColor = isUser ? "#fff" : "#202124";
-  const agentKey = (msg.metadata?.agent as string | undefined) ?? msg.agent?.replace(/\s+/g, "_");
+  const agentKey = (msg.metadata?.agent as string | undefined) ?? msg.agent?.replace(/\s+/g, "_").toLowerCase();
   const agentColor = AGENT_COLORS[agentKey ?? ""] ?? "#1a73e8";
-  const toolDescriptions = (msg.metadata?.tool_descriptions as Record<string, string> | undefined) ?? {};
+
+  const isGenericMessage = msg.text.includes("Task completed successfully") || msg.text.length < 5;
+  const detailedData = msg.metadata?.data as Record<string, any> | undefined;
 
   if (isSystem) {
     return (
-      <div style={{ display: "flex", justifyContent: "center" }}>
+      <div style={{ display: "flex", justifyContent: "center", margin: "8px 0" }}>
         <div style={systemMessageStyle}>{msg.text}</div>
       </div>
     );
@@ -1424,77 +1598,49 @@ function MessageRow({ msg }: { msg: Message }) {
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 6 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.2 }}
+      initial={{ opacity: 0, y: 10, scale: 0.98 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      transition={{ duration: 0.25, ease: "easeOut" }}
       style={{
         display: "flex",
         flexDirection: isUser ? "row-reverse" : "row",
-        alignItems: "flex-end",
+        alignItems: "flex-start",
         gap: 12,
+        margin: "6px 0",
       }}
     >
-      <div
-        style={{
-          width: 34,
-          height: 34,
-          borderRadius: 999,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          background: isUser ? "#1a73e8" : "#f1f3f4",
-          boxShadow: isUser ? "0 2px 8px rgba(26,115,232,0.2)" : "none",
-        }}
-      >
+      <div style={messageIconWrap(isUser, agentColor)}>
         {isUser ? <User size={16} color="#fff" /> : <Bot size={16} color={agentColor} />}
       </div>
 
-      <div style={{ display: "grid", gap: 6, maxWidth: "78%" }}>
+      <div style={{ display: "grid", gap: 4, maxWidth: "75%", minWidth: 0 }}>
         <div style={messageSenderStyle(isUser, agentColor)}>
-          {isUser ? "You" : msg.agent ?? "Agent"}
+          {isUser ? "authorized operator" : (msg.agent ?? "intel engine")}
         </div>
-        {isUser && msg.targetAgent ? (
-          <div style={messageTargetWrapStyle}>
-            <span style={agentHintChipStyle(msg.metadata?.agent_hint as string ?? msg.targetAgent)}>
-              {msg.targetAgent}
-            </span>
-          </div>
-        ) : null}
-        <div
-          style={{
-            borderRadius: 20,
-            padding: "12px 16px",
-            background: bubbleColor,
-            color: textColor,
-            boxShadow: isUser
-              ? "0 4px 12px rgba(26,115,232,0.15)"
-              : "0 2px 8px rgba(0,0,0,0.04)",
-          }}
-        >
+        
+        <div style={messageBubbleStyle(isUser)}>
           <RichText text={stripAgentLabel(msg.text)} isUser={isUser} />
-          {!isUser && (msg.metadata?.agent_description || msg.metadata?.action_description) ? (
-            <div style={routingInfoStyle}>
-              <div style={routingHeaderStyle}>Routing</div>
-              <div style={routingDescriptionStyle}>
-                {(msg.metadata?.agent_description as string | undefined) ?? ""}
+          
+          {isGenericMessage && detailedData && Object.keys(detailedData).length > 0 && (
+             <div style={dataPreviewStyle}>
+                <div style={dataHeader}>Results Payload</div>
+                <pre style={dataCodeStyle}>{JSON.stringify(detailedData, null, 2)}</pre>
+             </div>
+          )}
+
+          {!isUser && msg.metadata && (msg.metadata.agent_description || msg.metadata.action_description) && (
+            <div style={inlineRoutingStyle}>
+              <div style={inlineRoutingHeader}>
+                <Target size={10} /> Intel Route
               </div>
-              <div style={routingDescriptionStyle}>
-                {(msg.metadata?.action_description as string | undefined) ?? ""}
+              <div style={inlineRoutingText}>
+                {msg.metadata.agent_description as string} → {msg.metadata.action_description as string}
               </div>
-              {Object.keys(toolDescriptions).length ? (
-                <div style={messageToolsGridStyle}>
-                  {Object.entries(toolDescriptions).map(([tool, description]) => (
-                    <div key={tool} style={messageToolCardStyle}>
-                      <div style={{ fontSize: 11, fontWeight: 600 }}>{tool}</div>
-                      <div style={{ fontSize: 11, color: "#5f6368" }}>{description}</div>
-                    </div>
-                  ))}
-                </div>
-              ) : null}
             </div>
-          ) : null}
+          )}
         </div>
-        <div style={messageMetaStyle}>
+        
+        <div style={messageMetaStyle(isUser)}>
           {new Date(msg.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
           {isUser ? <StatusIcon status={msg.status ?? "delivered"} /> : null}
         </div>
@@ -1518,17 +1664,17 @@ function StatusLine({ label, value }: { label: string; value: string }) {
   );
 }
 
-function DetailRow({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
+function DetailRow({ label, value, highlight = false }: { label: string; value: string; highlight?: boolean }) {
   return (
     <div style={detailRowStyle}>
       <div style={detailsLabelStyle}>{label}</div>
-      <div style={detailValueStyle(mono)}>{value}</div>
+      <div style={detailValueStyle(highlight)}>{value}</div>
     </div>
   );
 }
 
 // ------------------------------------------------------------
-// STYLES – PREMIUM, MINIMAL, NO HARD LINES
+// STYLES – CONSTRAINED SCROLLING & PREMIUM LOOK
 // ------------------------------------------------------------
 
 const appShellStyle: CSSProperties = {
@@ -1536,110 +1682,123 @@ const appShellStyle: CSSProperties = {
   height: "100vh",
   width: "100vw",
   overflow: "hidden",
-  fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
-  background: "#fafbfc",
+  fontFamily: '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+  background: "#f8f9fa",
+  color: "#202124",
 };
 
 const sidebarStyle: CSSProperties = {
   width: 280,
   background: "#ffffff",
-  padding: "20px 16px",
+  padding: "24px 16px 16px",
   display: "flex",
   flexDirection: "column",
   gap: 8,
-  boxShadow: "1px 0 0 rgba(0,0,0,0.02), 4px 0 12px rgba(0,0,0,0.02)",
+  borderRight: "1px solid #f1f3f4",
+  boxShadow: "4px 0 24px rgba(0,0,0,0.02)",
+  zIndex: 10,
 };
 
 const sidebarHeaderStyle: CSSProperties = {
   display: "flex",
   alignItems: "center",
-  gap: 12,
-  padding: "0 6px 20px",
+  gap: 14,
+  padding: "0 8px 24px",
 };
 
 const logoBadgeStyle: CSSProperties = {
-  width: 40,
-  height: 40,
-  borderRadius: 14,
+  width: 44,
+  height: 44,
+  borderRadius: 16,
   background: "#e8f0fe",
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
-  boxShadow: "0 2px 6px rgba(26,115,232,0.08)",
+  boxShadow: "0 4px 12px rgba(26,115,232,0.1)",
 };
 
 const primaryPillButton: CSSProperties = {
   display: "flex",
   alignItems: "center",
-  gap: 8,
-  padding: "12px 16px",
-  borderRadius: 40,
+  gap: 10,
+  padding: "14px 20px",
+  borderRadius: 16,
   border: "none",
-  background: "#f1f3f4",
-  color: "#202124",
+  background: "#1a73e8",
+  color: "#ffffff",
   fontWeight: 600,
   fontSize: 14,
-  boxShadow: "0 2px 6px rgba(0,0,0,0.04)",
-  transition: "background 0.15s",
+  boxShadow: "0 4px 12px rgba(26,115,232,0.25)",
+  transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
   cursor: "pointer",
+  marginBottom: 12,
+  flexShrink: 0,
 };
 
 const navContainerStyle: CSSProperties = {
-  marginTop: 8,
   display: "grid",
-  gap: 2,
+  gap: 4,
+  flexShrink: 0,
 };
 
 const navButtonStyle: CSSProperties = {
   display: "flex",
   alignItems: "center",
-  gap: 12,
+  gap: 14,
   width: "100%",
-  padding: "12px 14px",
-  borderRadius: 14,
+  padding: "10px 16px",
+  borderRadius: 12,
   color: "#5f6368",
   fontWeight: 500,
   fontSize: 14,
   background: "transparent",
   border: "none",
   cursor: "pointer",
-  transition: "background 0.15s, color 0.15s",
+  position: "relative",
 };
 
 const activeNavButtonStyle: CSSProperties = {
-  background: "#e8f0fe",
   color: "#1a73e8",
+  background: "#f0f4f8",
+};
+
+const activeNavIndicatorStyle: CSSProperties = {
+  position: "absolute",
+  left: 0,
+  width: 4,
+  height: 16,
+  background: "#1a73e8",
+  borderRadius: "0 4px 4px 0",
 };
 
 const sessionsContainerStyle: CSSProperties = {
-  marginTop: 16,
-  paddingTop: 8,
-  overflow: "auto",
+  marginTop: 24,
+  paddingTop: 12,
+  overflowY: "auto",
   flex: 1,
   minHeight: 0,
 };
 
 const sectionLabelStyle: CSSProperties = {
-  padding: "8px 12px",
+  padding: "0 16px 12px",
   fontSize: 11,
   textTransform: "uppercase",
-  letterSpacing: "0.06em",
+  letterSpacing: "0.08em",
   color: "#80868b",
-  fontWeight: 600,
+  fontWeight: 700,
 };
 
 const sessionCardStyle: CSSProperties = {
   display: "flex",
   alignItems: "center",
-  gap: 8,
-  borderRadius: 14,
-  padding: "4px 6px",
-  marginBottom: 2,
-  transition: "background 0.15s",
+  gap: 4,
+  borderRadius: 12,
+  padding: "2px 8px",
+  marginBottom: 4,
 };
 
 const activeSessionCardStyle: CSSProperties = {
-  background: "#e8f0fe",
+  background: "#f8f9fa",
 };
 
 const sessionButtonStyle: CSSProperties = {
@@ -1648,18 +1807,30 @@ const sessionButtonStyle: CSSProperties = {
   gap: 12,
   flex: 1,
   minWidth: 0,
-  padding: "8px 6px",
-  borderRadius: 12,
+  padding: "8px",
+  borderRadius: 10,
   background: "transparent",
   border: "none",
   cursor: "pointer",
   textAlign: "left",
 };
 
+const sessionIconStyle = (active: boolean): CSSProperties => ({
+  width: 28,
+  height: 28,
+  borderRadius: 8,
+  background: active ? "#e8f0fe" : "#ffffff",
+  border: `1px solid ${active ? "#ceead6" : "#f1f3f4"}`,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  color: active ? "#1a73e8" : "#dadce0",
+});
+
 const sessionTitleStyle: CSSProperties = {
   fontSize: 13,
-  fontWeight: 500,
-  color: "#202124",
+  fontWeight: 600,
+  color: "#3c4043",
   overflow: "hidden",
   textOverflow: "ellipsis",
   whiteSpace: "nowrap",
@@ -1667,45 +1838,65 @@ const sessionTitleStyle: CSSProperties = {
 
 const sessionTimestampStyle: CSSProperties = {
   fontSize: 10,
-  color: "#80868b",
+  color: "#9aa0a6",
   marginTop: 2,
 };
 
 const trashButtonStyle: CSSProperties = {
-  padding: 6,
+  padding: 8,
   borderRadius: 10,
-  color: "#80868b",
+  color: "#dadce0",
   background: "transparent",
   border: "none",
   cursor: "pointer",
-  opacity: 0.7,
-  transition: "opacity 0.15s, background 0.15s",
+};
+
+const sidebarFooterStyle: CSSProperties = {
+  marginTop: "auto",
+  borderTop: "1px solid #f1f3f4",
+  paddingTop: 12,
+  flexShrink: 0,
 };
 
 const statusToggleStyle: CSSProperties = {
   display: "flex",
   alignItems: "center",
-  gap: 8,
+  gap: 12,
   width: "100%",
-  padding: "12px 14px",
+  padding: "14px 16px",
   borderRadius: 14,
-  background: "#f8f9fa",
-  color: "#5f6368",
-  fontWeight: 500,
+  background: "transparent",
+  color: "#3c4043",
+  fontWeight: 600,
   fontSize: 13,
   border: "none",
   cursor: "pointer",
-  transition: "background 0.15s",
 };
 
+const statusIndicatorWrapStyle = (connected: boolean): CSSProperties => ({
+  width: 16,
+  height: 16,
+  borderRadius: 99,
+  background: connected ? "#e6f4ea" : "#fce8e6",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+});
+
+const statusDotStyle = (connected: boolean): CSSProperties => ({
+  width: 6,
+  height: 6,
+  borderRadius: 99,
+  background: connected ? "#1e8e3e" : "#d93025",
+});
+
 const statusCardStyle: CSSProperties = {
-  marginTop: 8,
-  padding: 16,
+  margin: "4px 8px 12px",
+  padding: "16px",
   borderRadius: 18,
-  background: "#ffffff",
-  boxShadow: "0 8px 20px rgba(0,0,0,0.04)",
+  background: "#f8f9fa",
   display: "grid",
-  gap: 12,
+  gap: 10,
 };
 
 const mainStyle: CSSProperties = {
@@ -1713,33 +1904,35 @@ const mainStyle: CSSProperties = {
   display: "flex",
   flexDirection: "column",
   minWidth: 0,
-  background: "#fafbfc",
+  background: "#ffffff",
+  height: "100vh",
+  overflow: "hidden",
 };
 
 const headerStyle: CSSProperties = {
   height: 64,
   background: "#ffffff",
-  padding: "0 24px",
+  padding: "0 32px",
   display: "flex",
   alignItems: "center",
   justifyContent: "space-between",
-  boxShadow: "0 1px 0 rgba(0,0,0,0.02), 0 4px 8px rgba(0,0,0,0.02)",
+  borderBottom: "1px solid #f1f3f4",
+  flexShrink: 0,
 };
 
 const pageTitleStyle: CSSProperties = {
-  fontSize: 18,
-  fontWeight: 600,
+  fontSize: 20,
+  fontWeight: 700,
   color: "#202124",
-  textTransform: "capitalize",
   letterSpacing: "-0.01em",
 };
 
 const thinkingBadgeStyle: CSSProperties = {
   display: "flex",
   alignItems: "center",
-  gap: 6,
+  gap: 8,
   fontSize: 12,
-  fontWeight: 500,
+  fontWeight: 600,
   color: "#1a73e8",
   background: "#e8f0fe",
   borderRadius: 40,
@@ -1749,46 +1942,837 @@ const thinkingBadgeStyle: CSSProperties = {
 const connectionBadgeStyle = (connected: boolean): CSSProperties => ({
   display: "flex",
   alignItems: "center",
-  gap: 6,
+  gap: 8,
   borderRadius: 40,
   padding: "6px 12px",
-  fontSize: 12,
-  fontWeight: 500,
+  fontSize: 11,
+  fontWeight: 600,
   color: connected ? "#1e8e3e" : "#d93025",
   background: connected ? "#e6f4ea" : "#fce8e6",
-  boxShadow: "0 2px 4px rgba(0,0,0,0.02)",
 });
 
-const backendWarningStyle: CSSProperties = {
-  margin: "12px 20px 0",
+const contentLayout: CSSProperties = {
+  flex: 1,
+  minHeight: 0,
+  display: "flex",
+  flexDirection: "column",
+  overflow: "hidden",
+};
+
+const chatLayoutStyle: CSSProperties = {
+  flex: 1,
+  display: "grid",
+  gridTemplateColumns: "minmax(0, 1fr) 340px",
+  gap: 0,
+  minHeight: 0,
+  overflow: "hidden",
+};
+
+const chatColumnStyle: CSSProperties = {
+  minWidth: 0,
+  display: "flex",
+  flexDirection: "column",
+  background: "#ffffff",
+  borderRight: "1px solid #f1f3f4",
+  height: "100%",
+  overflow: "hidden",
+};
+
+const messagesPaneStyle: CSSProperties = {
+  flex: 1,
+  minHeight: 0,
+  overflowY: "auto",
+  padding: "24px 40px",
+  display: "flex",
+  flexDirection: "column",
+  gap: 8,
+};
+
+const composerOuterWrapStyle: CSSProperties = {
+  padding: "0 40px 24px",
+  background: "#ffffff",
+  borderTop: "1px solid #f8f9fa",
+  flexShrink: 0,
+};
+
+const contextualSuggestionsWrap: CSSProperties = {
+  display: "flex",
+  flexWrap: "nowrap",
+  gap: 8,
+  padding: "12px 0",
+  background: "#ffffff",
+  overflowX: "auto",
+};
+
+const inlineSuggestionButtonStyle: CSSProperties = {
+  padding: "6px 12px",
   borderRadius: 40,
-  background: "#fce8e6",
+  background: "#f1f3f4",
+  border: "none",
+  fontSize: 11,
+  fontWeight: 600,
+  color: "#3c4043",
+  cursor: "pointer",
+  whiteSpace: "nowrap",
+};
+
+const composerWrapStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 10,
+  padding: "6px 10px",
+  borderRadius: 20,
+  background: "#ffffff",
+  boxShadow: "0 8px 32px rgba(0,0,0,0.06)",
+  border: "1px solid #f1f3f4",
+  marginTop: 8,
+};
+
+const composerInputStyle: CSSProperties = {
+  flex: 1,
+  minWidth: 0,
+  border: "none",
+  outline: "none",
+  background: "transparent",
+  padding: "10px 12px",
+  color: "#202124",
+  fontSize: 15,
+};
+
+const composerActionWrap: CSSProperties = {
+  display: "flex",
+  gap: 6,
+};
+
+const iconCircleButton = (active: boolean): CSSProperties => ({
+  width: 40,
+  height: 40,
+  borderRadius: 12,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  background: active ? "#d93025" : "#f8f9fa",
+  border: "none",
+  cursor: "pointer",
+});
+
+const sendButtonStyle: CSSProperties = {
+  width: 40,
+  height: 40,
+  borderRadius: 12,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  background: "#1a73e8",
+  color: "#ffffff",
+  border: "none",
+  cursor: "pointer",
+  boxShadow: "0 4px 12px rgba(26,115,232,0.2)",
+};
+
+const detailsPanelStyle: CSSProperties = {
+  background: "#fafbfc",
+  display: "flex",
+  flexDirection: "column",
+  padding: "24px",
+  gap: 16,
+  overflowY: "auto",
+  height: "100%",
+};
+
+const detailsCardStyle: CSSProperties = {
+  borderRadius: 20,
+  background: "#ffffff",
+  padding: 20,
+  boxShadow: "0 4px 12px rgba(0,0,0,0.02)",
+  border: "1px solid #f1f3f4",
+};
+
+const detailsHeaderWithToggle: CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  marginBottom: 16,
+};
+
+const detailsTitleStyle: CSSProperties = {
+  fontSize: 15,
+  fontWeight: 700,
+  color: "#202124",
+};
+
+const traceIndicatorWrap: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 6,
+  fontSize: 10,
+  fontWeight: 700,
+  color: "#1e8e3e",
+  textTransform: "uppercase",
+};
+
+const traceDot: CSSProperties = {
+  width: 6,
+  height: 6,
+  borderRadius: 99,
+  background: "#1e8e3e",
+};
+
+const traceSectionStyle: CSSProperties = {
+  marginBottom: 12,
+};
+
+const traceQueryStyle: CSSProperties = {
+  fontSize: 12,
+  color: "#5f6368",
+  lineHeight: 1.5,
+  fontStyle: "italic",
+  marginTop: 4,
+};
+
+const traceGrid: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "1fr",
+  gap: 12,
+  marginBottom: 16,
+};
+
+const detailsLabelStyle: CSSProperties = {
+  fontSize: 10,
+  textTransform: "uppercase",
+  letterSpacing: "0.06em",
+  fontWeight: 700,
+  color: "#80868b",
+  marginBottom: 4,
+};
+
+const toolCardStyle: CSSProperties = {
+  borderRadius: 12,
+  background: "#f8f9fa",
+  padding: "10px 12px",
+  border: "1px solid #f1f3f4",
+  marginBottom: 8,
+};
+
+const toolTitleStyle: CSSProperties = {
+  fontSize: 11,
+  fontWeight: 700,
+  color: "#3c4043",
+  marginBottom: 2,
+};
+
+const toolDescStyle: CSSProperties = {
+  fontSize: 10,
+  color: "#5f6368",
+  lineHeight: 1.4,
+};
+
+const helpCardStyle: CSSProperties = {
+  display: "flex",
+  gap: 12,
+  padding: "16px",
+  borderRadius: 16,
+  background: "#e8f0fe80",
+  border: "1px solid #e8f0fe",
+};
+
+const helpIconWrap: CSSProperties = {
+  width: 28,
+  height: 28,
+  borderRadius: 8,
+  background: "#ffffff",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  flexShrink: 0,
+};
+
+const helpTitle: CSSProperties = {
+  fontSize: 12,
+  fontWeight: 700,
+  color: "#1a73e8",
+  marginBottom: 2,
+};
+
+const helpText: CSSProperties = {
+  fontSize: 11,
+  color: "#5f6368",
+  lineHeight: 1.4,
+};
+
+const selectedAgentBarStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 8,
+  padding: "0 12px 4px",
+};
+
+const selectedAgentLabelStyle: CSSProperties = {
+  fontSize: 10,
+  color: "#9aa0a6",
+  fontWeight: 700,
+  textTransform: "uppercase",
+};
+
+const clearAgentHintButtonStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  color: "#dadce0",
+  background: "transparent",
+  border: "none",
+  padding: 4,
+  cursor: "pointer",
+};
+
+const agentPickerWrapStyle: CSSProperties = {
+  position: "relative",
+};
+
+const agentPickerButtonStyle: CSSProperties = {
+  width: 40,
+  height: 40,
+  borderRadius: 12,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  background: "#f8f9fa",
+  color: "#5f6368",
+  border: "none",
+  cursor: "pointer",
+};
+
+const agentPickerMenuStyle: CSSProperties = {
+  position: "absolute",
+  left: 0,
+  bottom: "calc(100% + 12px)",
+  width: 260,
+  borderRadius: 20,
+  background: "#ffffff",
+  boxShadow: "0 16px 40px rgba(0,0,0,0.12)",
+  border: "1px solid #f1f3f4",
+  padding: 10,
+  display: "grid",
+  gap: 2,
+  zIndex: 100,
+};
+
+const pickerHeaderStyle: CSSProperties = {
+  fontSize: 10,
+  fontWeight: 700,
+  color: "#9aa0a6",
+  padding: "6px 10px",
+  textTransform: "uppercase",
+};
+
+const pickerItemTitleWrap: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 8,
+};
+
+const pickerDot = (color: string): CSSProperties => ({
+  width: 6,
+  height: 6,
+  borderRadius: 99,
+  background: color,
+});
+
+const agentPickerItemStyle = (active: boolean): CSSProperties => ({
+  display: "grid",
+  gap: 2,
+  textAlign: "left",
+  padding: "10px 12px",
+  borderRadius: 12,
+  background: active ? "#f0f4f8" : "transparent",
+  color: active ? "#1a73e8" : "#3c4043",
+  border: "none",
+  cursor: "pointer",
+});
+
+const agentPickerItemTitleStyle: CSSProperties = {
+  fontSize: 13,
+  fontWeight: 700,
+};
+
+const agentPickerItemDescriptionStyle: CSSProperties = {
+  fontSize: 11,
+  color: "#80868b",
+};
+
+const agentHintChipStyle = (agentId: string): CSSProperties => ({
+  display: "inline-flex",
+  alignItems: "center",
+  borderRadius: 99,
+  padding: "2px 8px",
+  background: `${AGENT_COLORS[agentId] ?? "#1a73e8"}15`,
+  color: AGENT_COLORS[agentId] ?? "#1a73e8",
+  fontSize: 10,
+  fontWeight: 700,
+});
+
+const emptyStateWrapStyle: CSSProperties = {
+  flex: 1,
+  display: "flex",
+  flexDirection: "column",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: 12,
+  textAlign: "center",
+  padding: "40px 20px",
+};
+
+const emptyLogoWrap: CSSProperties = {
+  width: 72,
+  height: 72,
+  borderRadius: 24,
+  background: "#e8f0fe",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  marginBottom: 8,
+};
+
+const emptyStateTitleStyle: CSSProperties = {
+  fontSize: 24,
+  fontWeight: 800,
+  color: "#202124",
+  letterSpacing: "-0.02em",
+};
+
+const emptyStateSubtitleStyle: CSSProperties = {
+  fontSize: 14,
+  color: "#5f6368",
+  maxWidth: 440,
+  lineHeight: 1.5,
+};
+
+const suggestionsContainerStyle: CSSProperties = {
+  display: "flex",
+  flexWrap: "wrap",
+  gap: 10,
+  justifyContent: "center",
+  marginTop: 20,
+  maxWidth: 640,
+};
+
+const suggestionButtonStyle: CSSProperties = {
+  borderRadius: 12,
+  border: "1px solid #f1f3f4",
+  padding: "10px 16px",
+  background: "#ffffff",
+  color: "#3c4043",
+  fontWeight: 600,
+  fontSize: 12,
+  boxShadow: "0 1px 3px rgba(0,0,0,0.02)",
+  cursor: "pointer",
+};
+
+const systemMessageStyle: CSSProperties = {
+  maxWidth: "80%",
+  borderRadius: 16,
+  background: "#fff9e6",
+  color: "#663c00",
+  fontSize: 13,
+  fontWeight: 500,
+  lineHeight: 1.5,
+  padding: "10px 18px",
+  border: "1px solid #ffe2b9",
+};
+
+const inlineRoutingStyle: CSSProperties = {
+  marginTop: 12,
+  paddingTop: 10,
+  borderTop: "1px solid rgba(0,0,0,0.05)",
+};
+
+const inlineRoutingHeader: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 6,
+  fontSize: 9,
+  fontWeight: 800,
+  color: "#9aa0a6",
+  textTransform: "uppercase",
+  letterSpacing: "0.04em",
+  marginBottom: 4,
+};
+
+const inlineRoutingText: CSSProperties = {
+  fontSize: 11,
+  color: "#80868b",
+  lineHeight: 1.4,
+  fontWeight: 500,
+};
+
+const messageIconWrap = (isUser: boolean, agentColor: string): CSSProperties => ({
+  width: 34,
+  height: 34,
+  borderRadius: 10,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  background: isUser ? "#1a73e8" : "#ffffff",
+  boxShadow: isUser ? "0 4px 10px rgba(26,115,232,0.2)" : "0 2px 6px rgba(0,0,0,0.04)",
+  border: isUser ? "none" : "1px solid #f1f3f4",
+  flexShrink: 0,
+});
+
+const messageSenderStyle = (isUser: boolean, agentColor: string): CSSProperties => ({
+  fontSize: 10,
+  fontWeight: 800,
+  color: isUser ? "#1a73e8" : agentColor,
+  textTransform: "uppercase",
+  letterSpacing: "0.04em",
+  marginLeft: 2,
+});
+
+const messageBubbleStyle = (isUser: boolean): CSSProperties => ({
+  borderRadius: isUser ? "20px 4px 20px 20px" : "4px 20px 20px 20px",
+  padding: "10px 14px",
+  background: isUser ? "#1a73e8" : "#f8f9fa",
+  color: isUser ? "#ffffff" : "#202124",
+  boxShadow: isUser ? "0 4px 12px rgba(26,115,232,0.12)" : "none",
+  border: isUser ? "none" : "1px solid #f1f3f4",
+});
+
+const messageMetaStyle = (isUser: boolean): CSSProperties => ({
+  fontSize: 9,
+  color: "#9aa0a6",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: isUser ? "flex-end" : "flex-start",
+  gap: 6,
+  marginTop: 2,
+  padding: "0 2px",
+});
+
+const dataPreviewStyle: CSSProperties = {
+  marginTop: 10,
+  padding: 12,
+  borderRadius: 12,
+  background: "rgba(0,0,0,0.03)",
+  border: "1px solid rgba(0,0,0,0.05)",
+  overflowX: "auto"
+};
+
+const dataHeader: CSSProperties = {
+  fontSize: 10,
+  fontWeight: 800,
+  color: "#5f6368",
+  textTransform: "uppercase",
+  letterSpacing: "0.05em",
+  marginBottom: 6,
+};
+
+const dataCodeStyle: CSSProperties = {
+  fontSize: 11,
+  color: "#3c4043",
+  fontFamily: "'Fira Code', monospace",
+  whiteSpace: "pre-wrap",
+  wordBreak: "break-all",
+  margin: 0,
+};
+
+const statusLineStyle: CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: 12,
+  fontSize: 12,
+};
+
+const statusLineLabelStyle: CSSProperties = {
+  color: "#80868b",
+  fontWeight: 500,
+};
+
+const statusLineValueStyle: CSSProperties = {
+  color: "#3c4043",
+  fontWeight: 700,
+};
+
+const statusGroup: CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  marginBottom: 6,
+};
+
+const statusPill = (healthy: boolean): CSSProperties => ({
+  padding: "2px 8px",
+  borderRadius: 99,
+  background: healthy ? "#e6f4ea" : "#fce8e6",
+  color: healthy ? "#1e8e3e" : "#d93025",
+  fontSize: 10,
+  fontWeight: 800,
+  textTransform: "uppercase",
+});
+
+const detailRowStyle: CSSProperties = {
+  marginBottom: 12,
+};
+
+const detailValueStyle = (highlight: boolean): CSSProperties => ({
+  fontSize: 13,
+  fontWeight: highlight ? 700 : 500,
+  color: highlight ? "#1a73e8" : "#3c4043",
+  lineHeight: 1.4,
+  wordBreak: "break-word",
+});
+
+const fullPanePanel: CSSProperties = {
+  flex: 1,
+  height: "100%",
+  overflowY: "auto",
+};
+
+const contentWrapStyle: CSSProperties = {
+  padding: 32,
+  height: "100%",
+};
+
+const dashboardGridStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(3, 1fr)",
+  gap: 20,
+};
+
+const contentCardStyle: CSSProperties = {
+  borderRadius: 24,
+  background: "#ffffff",
+  padding: 24,
+  boxShadow: "0 4px 20px rgba(0,0,0,0.02)",
+  border: "1px solid #f1f3f4",
+};
+
+const singleColumnCardStyle: CSSProperties = {
+  ...contentCardStyle,
+  maxWidth: 800,
+  margin: "0 auto",
+};
+
+const cardHeaderStyle: CSSProperties = {
+  fontSize: 16,
+  fontWeight: 800,
+  color: "#202124",
+  marginBottom: 20,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+};
+
+const cardHeaderTitleStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 10,
+};
+
+const alertCountStyle: CSSProperties = {
   color: "#d93025",
+  fontSize: 11,
+  fontWeight: 800,
+  textTransform: "uppercase",
+  background: "#fce8e6",
+  padding: "3px 10px",
+  borderRadius: 99,
+};
+
+const alertsContainerStyle: CSSProperties = {
+  display: "grid",
+  gap: 12,
+};
+
+const alertCardStyle = (severity: AlertItem["severity"]): CSSProperties => ({
+  borderRadius: 16,
+  padding: 16,
+  border: "1px solid #f1f3f4",
+  borderLeft: `4px solid ${
+    severity === "high" ? "#d93025" : severity === "medium" ? "#f9ab00" : "#1e8e3e"
+  }`,
+  background: "#fafbfc",
+  display: "grid",
+  gap: 6,
+});
+
+const alertTitleStyle: CSSProperties = {
+  fontSize: 14,
+  fontWeight: 700,
+  color: "#202124",
+};
+
+const alertDescriptionStyle: CSSProperties = {
+  color: "#5f6368",
+  fontSize: 13,
+  lineHeight: 1.5,
+};
+
+const alertFooterStyle: CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  marginTop: 4,
+};
+
+const alertSourceStyle: CSSProperties = {
+  color: "#9aa0a6",
+  fontSize: 10,
+  fontWeight: 700,
+  textTransform: "uppercase",
+};
+
+const alertActionButton: CSSProperties = {
+  fontSize: 11,
+  fontWeight: 700,
+  color: "#1a73e8",
+  background: "transparent",
+  border: "none",
+  cursor: "pointer",
+};
+
+const noAlertsStyle: CSSProperties = {
+  color: "#9aa0a6",
+  fontSize: 14,
+  textAlign: "center",
+  padding: "32px 0",
+};
+
+const systemOverviewGridStyle: CSSProperties = {
+  display: "grid",
+  gap: 12,
+};
+
+const quickActionsContainerStyle: CSSProperties = {
+  display: "flex",
+  flexWrap: "wrap",
+  gap: 10,
+};
+
+const kbIntroText: CSSProperties = {
+  fontSize: 14,
+  color: "#5f6368",
+  marginBottom: 24,
+  lineHeight: 1.5,
+};
+
+const fieldLabelStyle: CSSProperties = {
+  fontSize: 11,
+  fontWeight: 800,
+  marginBottom: 6,
+  color: "#3c4043",
+  textTransform: "uppercase",
+};
+
+const textareaStyle: CSSProperties = {
+  width: "100%",
+  borderRadius: 16,
+  border: "1px solid #f1f3f4",
+  background: "#f8f9fa",
+  padding: 16,
+  resize: "none",
+  color: "#202124",
+  fontSize: 14,
+  lineHeight: 1.5,
+  marginBottom: 20,
+  outline: "none",
+};
+
+const textInputStyle: CSSProperties = {
+  width: "100%",
+  borderRadius: 12,
+  border: "1px solid #f1f3f4",
+  background: "#f8f9fa",
+  padding: "12px 16px",
+  color: "#202124",
+  fontSize: 14,
+  outline: "none",
+};
+
+const knowledgeFooterStyle: CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  marginTop: 24,
+};
+
+const wordCountStyle: CSSProperties = {
+  fontSize: 12,
+  fontWeight: 500,
+  color: "#9aa0a6",
+};
+
+const researchGridStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
+  gap: 20,
+};
+
+const researchQueriesContainerStyle: CSSProperties = {
+  display: "grid",
+  gap: 10,
+};
+
+const researchButtonStyle: CSSProperties = {
+  textAlign: "left",
+  borderRadius: 14,
+  border: "1px solid #f1f3f4",
+  background: "#ffffff",
+  padding: "12px 16px",
+  color: "#3c4043",
+  fontSize: 13,
+  fontWeight: 600,
+  lineHeight: 1.4,
+  cursor: "pointer",
+  display: "flex",
+  alignItems: "center",
+  gap: 10,
+};
+
+const emptyRoutingStyle: CSSProperties = {
+  fontSize: 13,
+  color: "#9aa0a6",
+  lineHeight: 1.6,
+  textAlign: "center",
+  padding: "32px 20px",
+};
+
+const toolsGridStyle: CSSProperties = {
+  display: "grid",
+  gap: 10,
+};
+
+const backendWarningStyle: CSSProperties = {
+  margin: "12px 32px 0",
+  borderRadius: 12,
+  background: "#fff4e5",
+  color: "#663c00",
   display: "flex",
   gap: 10,
   alignItems: "center",
-  padding: "12px 18px",
-  fontSize: 13,
-  fontWeight: 500,
+  padding: "10px 16px",
+  fontSize: 12,
+  fontWeight: 600,
+  border: "1px solid #ffe2b9",
+  flexShrink: 0,
 };
 
 const modalBackdropStyle: CSSProperties = {
   position: "fixed",
   inset: 0,
-  background: "rgba(32,33,36,0.3)",
-  backdropFilter: "blur(3px)",
+  background: "rgba(32, 33, 36, 0.4)",
+  backdropFilter: "blur(6px)",
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
-  zIndex: 60,
+  zIndex: 1000,
 };
 
 const modalCardStyle: CSSProperties = {
   width: "min(520px, 92vw)",
   borderRadius: 28,
-  background: "#fff",
+  background: "#ffffff",
   padding: 28,
-  boxShadow: "0 28px 48px rgba(0,0,0,0.12)",
+  boxShadow: "0 24px 48px rgba(0,0,0,0.18)",
 };
 
 const modalHeaderStyle: CSSProperties = {
@@ -1801,22 +2785,28 @@ const modalHeaderStyle: CSSProperties = {
 const warningIconWrapStyle: CSSProperties = {
   width: 44,
   height: 44,
-  borderRadius: 999,
-  background: "#fef7e0",
+  borderRadius: 14,
+  background: "#fff9e6",
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
 };
 
-const modalPromptStyle: CSSProperties = {
-  borderRadius: 20,
+const modalPromptWrapStyle: CSSProperties = {
+  borderRadius: 16,
   background: "#f8f9fa",
-  padding: 18,
+  padding: 16,
+  marginBottom: 24,
+  border: "1px solid #f1f3f4",
+};
+
+const modalPromptStyle: CSSProperties = {
   whiteSpace: "pre-wrap",
   fontSize: 13,
   lineHeight: 1.6,
-  marginBottom: 24,
-  border: "none",
+  color: "#3c4043",
+  margin: 0,
+  fontFamily: "inherit",
 };
 
 const modalActionsStyle: CSSProperties = {
@@ -1826,610 +2816,61 @@ const modalActionsStyle: CSSProperties = {
 
 const secondaryActionButton: CSSProperties = {
   flex: 1,
-  borderRadius: 40,
+  borderRadius: 14,
   border: "none",
   padding: "14px 18px",
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
   gap: 8,
-  fontWeight: 600,
-  fontSize: 14,
+  fontWeight: 700,
+  fontSize: 13,
   color: "#5f6368",
   background: "#f1f3f4",
   cursor: "pointer",
-  transition: "background 0.15s",
 };
 
 const primaryActionButton: CSSProperties = {
   flex: 1,
-  borderRadius: 40,
+  borderRadius: 14,
   border: "none",
   padding: "14px 18px",
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
   gap: 8,
-  fontWeight: 600,
-  fontSize: 14,
-  color: "#fff",
+  fontWeight: 700,
+  fontSize: 13,
+  color: "#ffffff",
   background: "#1a73e8",
   boxShadow: "0 4px 12px rgba(26,115,232,0.2)",
   cursor: "pointer",
-  transition: "background 0.15s, box-shadow 0.15s",
 };
 
-const chatLayoutStyle: CSSProperties = {
-  flex: 1,
-  minHeight: 0,
-  display: "grid",
-  gridTemplateColumns: "minmax(0, 1fr) 380px",
-  gap: 20,
-  padding: 20,
-};
-
-const chatColumnStyle: CSSProperties = {
-  minWidth: 0,
-  display: "flex",
-  flexDirection: "column",
-  gap: 16,
-  minHeight: 0,
-};
-
-const messagesPaneStyle: CSSProperties = {
-  flex: 1,
-  minHeight: 0,
-  overflow: "auto",
-  display: "grid",
-  gap: 18,
-  paddingRight: 6,
-  paddingBottom: 8,
-};
-
-const composerWrapStyle: CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: 10,
-  padding: 8,
-  borderRadius: 40,
-  background: "#ffffff",
-  boxShadow: "0 8px 24px rgba(0,0,0,0.06)",
-  border: "none",
-  position: "sticky",
-  bottom: 0,
-  zIndex: 4,
-};
-
-const composerInputStyle: CSSProperties = {
-  flex: 1,
-  minWidth: 0,
-  border: "none",
-  outline: "none",
-  background: "transparent",
-  padding: "12px 16px",
-  color: "#202124",
-  fontSize: 15,
-};
-
-const iconCircleButton = (active: boolean): CSSProperties => ({
-  width: 44,
-  height: 44,
-  borderRadius: 999,
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  background: active ? "#d93025" : "#f1f3f4",
-  border: "none",
-  cursor: "pointer",
-  transition: "background 0.15s",
-});
-
-const sendButtonStyle: CSSProperties = {
-  width: 44,
-  height: 44,
-  borderRadius: 999,
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  background: "#1a73e8",
-  color: "#fff",
-  border: "none",
-  cursor: "pointer",
-  boxShadow: "0 2px 8px rgba(26,115,232,0.2)",
-  transition: "background 0.15s, box-shadow 0.15s",
-};
-
-const detailsPanelStyle: CSSProperties = {
-  minWidth: 0,
-  display: "grid",
-  alignContent: "start",
-  gap: 16,
-  minHeight: 0,
-  overflow: "auto",
-};
-
-const detailsCardStyle: CSSProperties = {
-  borderRadius: 24,
-  background: "#ffffff",
-  padding: 20,
-  boxShadow: "0 4px 16px rgba(0,0,0,0.04)",
-};
-
-const detailsTitleStyle: CSSProperties = {
-  fontSize: 15,
-  fontWeight: 600,
-  color: "#202124",
-  marginBottom: 16,
-  letterSpacing: "-0.01em",
-};
-
-const detailsLabelStyle: CSSProperties = {
-  fontSize: 11,
-  textTransform: "uppercase",
-  letterSpacing: "0.06em",
-  fontWeight: 600,
-  color: "#80868b",
-  marginBottom: 4,
-};
-
-const toolCardStyle: CSSProperties = {
-  borderRadius: 16,
-  background: "#f8f9fa",
-  padding: 14,
-  border: "none",
-};
-
-const selectedAgentBarStyle: CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: 8,
-  padding: "0 8px",
-  marginTop: -4,
-};
-
-const selectedAgentLabelStyle: CSSProperties = {
-  fontSize: 12,
-  color: "#80868b",
-  fontWeight: 600,
-};
-
-const clearAgentHintButtonStyle: CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  color: "#80868b",
-  background: "transparent",
-  border: "none",
-  padding: 0,
-};
-
-const agentPickerWrapStyle: CSSProperties = {
-  position: "relative",
-  flexShrink: 0,
-};
-
-const agentPickerButtonStyle: CSSProperties = {
-  width: 44,
-  height: 44,
-  borderRadius: 999,
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  background: "#f1f3f4",
-  color: "#5f6368",
-  border: "none",
-};
-
-const agentPickerMenuStyle: CSSProperties = {
-  position: "absolute",
-  left: 0,
-  bottom: "calc(100% + 10px)",
-  width: 260,
-  borderRadius: 20,
-  background: "#ffffff",
-  boxShadow: "0 18px 40px rgba(0,0,0,0.12)",
-  padding: 8,
-  display: "grid",
-  gap: 6,
-  zIndex: 10,
-};
-
-const agentPickerItemStyle = (active: boolean): CSSProperties => ({
-  display: "grid",
-  gap: 4,
-  textAlign: "left",
-  padding: "10px 12px",
-  borderRadius: 14,
-  background: active ? "#e8f0fe" : "#ffffff",
-  color: active ? "#1a73e8" : "#202124",
-  border: "none",
-});
-
-const agentPickerItemTitleStyle: CSSProperties = {
-  fontSize: 13,
-  fontWeight: 600,
-};
-
-const agentPickerItemDescriptionStyle: CSSProperties = {
-  fontSize: 12,
-  color: "#5f6368",
-  lineHeight: 1.45,
-};
-
-const routingToggleButtonStyle: CSSProperties = {
-  width: "100%",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  gap: 8,
-  background: "transparent",
-  border: "none",
-  padding: 0,
-};
-
-const messageTargetWrapStyle: CSSProperties = {
-  display: "flex",
-};
-
-const agentHintChipStyle = (agentId: string): CSSProperties => ({
-  display: "inline-flex",
-  alignItems: "center",
-  borderRadius: 999,
-  padding: "5px 10px",
-  background: `${AGENT_COLORS[agentId] ?? "#1a73e8"}18`,
-  color: AGENT_COLORS[agentId] ?? "#1a73e8",
-  fontSize: 11,
-  fontWeight: 700,
-  textTransform: "uppercase",
-  letterSpacing: "0.05em",
-});
-
-const emptyStateWrapStyle: CSSProperties = {
-  minHeight: "70vh",
-  display: "flex",
-  flexDirection: "column",
-  alignItems: "center",
-  justifyContent: "center",
-  gap: 12,
-  textAlign: "center",
-  padding: 20,
-};
-
-const emptyStateTitleStyle: CSSProperties = {
-  fontSize: 22,
-  fontWeight: 600,
-  color: "#202124",
-  letterSpacing: "-0.01em",
-};
-
-const emptyStateSubtitleStyle: CSSProperties = {
-  fontSize: 15,
-  color: "#5f6368",
-  maxWidth: 460,
-};
-
-const suggestionsContainerStyle: CSSProperties = {
-  display: "flex",
-  flexWrap: "wrap",
-  gap: 10,
-  justifyContent: "center",
-  marginTop: 20,
-  maxWidth: 700,
-};
-
-const suggestionButtonStyle: CSSProperties = {
-  borderRadius: 40,
-  border: "none",
-  padding: "12px 18px",
-  background: "#ffffff",
-  color: "#1a73e8",
-  fontWeight: 500,
-  fontSize: 13,
-  boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
-  cursor: "pointer",
-  transition: "box-shadow 0.15s, background 0.15s",
-};
-
-const systemMessageStyle: CSSProperties = {
-  maxWidth: 520,
-  borderRadius: 40,
-  background: "#fef7e0",
-  color: "#7c6d22",
-  fontSize: 13,
-  lineHeight: 1.6,
-  padding: "10px 18px",
-  border: "none",
-};
-
-const routingInfoStyle: CSSProperties = {
-  marginTop: 16,
-  paddingTop: 12,
-  borderTop: "1px solid rgba(0,0,0,0.04)",
-};
-
-const routingHeaderStyle: CSSProperties = {
-  fontSize: 11,
-  fontWeight: 600,
-  color: "#5f6368",
-  marginBottom: 6,
-  textTransform: "uppercase",
-  letterSpacing: "0.04em",
-};
-
-const routingDescriptionStyle: CSSProperties = {
-  fontSize: 12,
-  color: "#5f6368",
-  lineHeight: 1.5,
-};
-
-const messageToolsGridStyle: CSSProperties = {
-  marginTop: 12,
-  display: "grid",
-  gap: 8,
-};
-
-const messageToolCardStyle: CSSProperties = {
-  borderRadius: 12,
-  background: "#f8f9fa",
-  padding: 10,
-  border: "none",
-};
-
-const messageSenderStyle = (isUser: boolean, agentColor: string): CSSProperties => ({
-  fontSize: 11,
-  fontWeight: 600,
-  color: isUser ? "#1a73e8" : agentColor,
-  textTransform: "uppercase",
-  letterSpacing: "0.04em",
-  marginLeft: 4,
-});
-
-const messageMetaStyle: CSSProperties = {
-  fontSize: 10,
-  color: "#80868b",
-  display: "flex",
-  alignItems: "center",
-  gap: 6,
-  marginLeft: 4,
-};
-
-const statusLineStyle: CSSProperties = {
-  display: "flex",
-  justifyContent: "space-between",
-  gap: 12,
-  fontSize: 13,
-};
-
-const statusLineLabelStyle: CSSProperties = {
-  color: "#5f6368",
-};
-
-const statusLineValueStyle: CSSProperties = {
-  color: "#202124",
-  maxWidth: 180,
-  textAlign: "right",
-  overflow: "hidden",
-  textOverflow: "ellipsis",
-  fontWeight: 500,
-};
-
-const detailRowStyle: CSSProperties = {
-  marginTop: 12,
-};
-
-const detailValueStyle = (mono: boolean): CSSProperties => ({
-  fontSize: 13,
-  color: "#202124",
-  lineHeight: 1.5,
-  fontFamily: mono ? "monospace" : "inherit",
-  wordBreak: "break-word",
-});
-
-const contentWrapStyle: CSSProperties = {
-  padding: 24,
-};
-
-const dashboardGridStyle: CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-  gap: 20,
-};
-
-const contentCardStyle: CSSProperties = {
-  borderRadius: 24,
-  background: "#ffffff",
-  padding: 24,
-  boxShadow: "0 4px 20px rgba(0,0,0,0.03)",
-};
-
-const singleColumnCardStyle: CSSProperties = {
-  ...contentCardStyle,
-  maxWidth: 820,
-  margin: "0 auto",
-};
-
-const cardHeaderStyle: CSSProperties = {
-  fontSize: 15,
-  fontWeight: 600,
-  color: "#202124",
-  marginBottom: 20,
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  gap: 12,
-};
-
-const cardHeaderTitleStyle: CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: 10,
-};
-
-const alertCountStyle: CSSProperties = {
-  color: "#5f6368",
-  fontSize: 13,
-  fontWeight: 500,
-};
-
-const alertsContainerStyle: CSSProperties = {
-  display: "grid",
-  gap: 12,
-};
-
-const alertCardStyle = (severity: AlertItem["severity"]): CSSProperties => ({
-  borderRadius: 20,
-  padding: 18,
-  borderLeft: `4px solid ${
-    severity === "high" ? "#d93025" : severity === "medium" ? "#f9ab00" : "#1e8e3e"
-  }`,
-  background: "#fafbfc",
-  boxShadow: "0 2px 8px rgba(0,0,0,0.02)",
-  display: "grid",
-  gap: 8,
-});
-
-const alertTitleStyle: CSSProperties = {
-  fontWeight: 600,
-  color: "#202124",
-};
-
-const alertDescriptionStyle: CSSProperties = {
-  color: "#5f6368",
-  fontSize: 13,
-  lineHeight: 1.5,
-};
-
-const alertSourceStyle: CSSProperties = {
-  color: "#80868b",
-  fontSize: 11,
-  textTransform: "uppercase",
-  letterSpacing: "0.03em",
-};
-
-const noAlertsStyle: CSSProperties = {
-  color: "#5f6368",
-  fontSize: 14,
-  padding: "12px 0",
-};
-
-const systemOverviewGridStyle: CSSProperties = {
-  display: "grid",
-  gap: 14,
-};
-
-const quickActionsContainerStyle: CSSProperties = {
-  display: "flex",
-  flexWrap: "wrap",
-  gap: 10,
-};
-
-const fieldLabelStyle: CSSProperties = {
-  fontSize: 13,
-  fontWeight: 600,
-  marginBottom: 8,
-  color: "#202124",
-};
-
-const textareaStyle: CSSProperties = {
-  width: "100%",
-  borderRadius: 18,
-  border: "none",
-  background: "#f8f9fa",
-  padding: 16,
-  resize: "vertical",
-  minHeight: 180,
-  color: "#202124",
-  fontSize: 14,
-  marginBottom: 20,
-  outline: "none",
-  boxShadow: "inset 0 1px 3px rgba(0,0,0,0.02)",
-};
-
-const textInputStyle: CSSProperties = {
-  width: "100%",
-  borderRadius: 18,
-  border: "none",
-  background: "#f8f9fa",
-  padding: "14px 16px",
-  color: "#202124",
-  fontSize: 14,
-  outline: "none",
-  boxShadow: "inset 0 1px 3px rgba(0,0,0,0.02)",
-};
-
-const knowledgeFooterStyle: CSSProperties = {
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "center",
-  marginTop: 20,
-};
-
-const wordCountStyle: CSSProperties = {
-  fontSize: 12,
-  color: "#80868b",
-};
-
-const researchGridStyle: CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))",
-  gap: 20,
-};
-
-const researchQueriesContainerStyle: CSSProperties = {
-  display: "grid",
-  gap: 10,
-};
-
-const researchButtonStyle: CSSProperties = {
-  textAlign: "left",
-  borderRadius: 18,
-  border: "none",
-  background: "#f8f9fa",
-  padding: "14px 18px",
-  color: "#202124",
-  fontSize: 13,
-  fontWeight: 500,
-  lineHeight: 1.5,
-  cursor: "pointer",
-  transition: "background 0.15s, box-shadow 0.15s",
-  boxShadow: "0 1px 2px rgba(0,0,0,0.02)",
-};
-
-const emptyRoutingStyle: CSSProperties = {
-  fontSize: 13,
-  color: "#5f6368",
-  lineHeight: 1.6,
-};
-
-const toolsGridStyle: CSSProperties = {
-  display: "grid",
-  gap: 10,
-  marginTop: 8,
-};
-
-// Global spinner animation
+// Global animations
 const styleSheet = document.createElement("style");
 styleSheet.textContent = `
-  .spin {
-    animation: spin 1s linear infinite;
-  }
   @keyframes spin {
     from { transform: rotate(0deg); }
     to { transform: rotate(360deg); }
   }
+  .spin {
+    animation: spin 1s linear infinite;
+  }
+  @keyframes pulse {
+    0% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.1); opacity: 0.8; }
+    100% { transform: scale(1); opacity: 1; }
+  }
+  .pulse {
+    animation: pulse 2s infinite ease-in-out;
+  }
   .hide-scrollbar {
-    scrollbar-width: thin;
-    scrollbar-color: #dadce0 transparent;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
   }
   .hide-scrollbar::-webkit-scrollbar {
-    width: 6px;
-  }
-  .hide-scrollbar::-webkit-scrollbar-track {
-    background: transparent;
-  }
-  .hide-scrollbar::-webkit-scrollbar-thumb {
-    background-color: #dadce0;
-    border-radius: 20px;
+    display: none;
   }
 `;
 document.head.appendChild(styleSheet);

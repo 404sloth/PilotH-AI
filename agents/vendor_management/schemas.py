@@ -20,6 +20,7 @@ class VendorAction(str, Enum):
     EVALUATE = "evaluate"  # Score & assess a specific existing vendor
     MONITOR_SLA = "monitor_sla"  # Check SLA compliance
     TRACK_MILESTONES = "track_milestones"  # Review milestone status
+    SUMMARIZE_CONTRACT = "summarize_contract"  # Parse and summarize contract terms
     FULL_ASSESSMENT = "full_assessment"  # Combination of all of the above
 
 
@@ -62,6 +63,9 @@ class VendorManagementInput(BaseModel):
     # --- New project / service matching (FIND_BEST)
     service_required: Optional[str] = Field(
         None, description="Service tag needed (e.g. cloud_hosting)"
+    )
+    industry: Optional[str] = Field(
+        None, description="Industry filter (e.g. Technology, Finance)"
     )
     budget_monthly: Optional[float] = Field(
         None, description="Max monthly budget in USD"
@@ -138,6 +142,7 @@ class VendorState(TypedDict, total=False):
     vendor_name: Optional[str]
     vendor_id: Optional[str]
     service_required: Optional[str]
+    industry: Optional[str]
     budget_monthly: Optional[float]
     min_quality_score: float
     min_on_time_rate: float
