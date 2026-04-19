@@ -16,7 +16,9 @@ def default_sla_clauses() -> List[Dict[str, Any]]:
         {"metric_name": "avg_resolution_time", "target": 240, "weight": 0.15},
     ]
 
-def sla_analyzer_node(state: VendorState) -> VendorState:
+from langchain_core.runnables import RunnableConfig
+
+def sla_analyzer_node(state: VendorState, config: RunnableConfig) -> Dict[str, Any]:
     """
     Compare SLA metrics against contract clauses and generate score/audit trail.
     """

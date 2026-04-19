@@ -2,7 +2,7 @@
 Communication agent package.
 """
 
-from .agent import MeetingCommunicationAgent
+from .agent import CommunicationAgent
 from .schemas import MeetingRequestInput, MeetingAgentOutput
 
-__all__ = ["MeetingCommunicationAgent", "MeetingRequestInput", "MeetingAgentOutput"]
+__all__ = ["CommunicationAgent", "MeetingRequestInput", "MeetingAgentOutput"]

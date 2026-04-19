@@ -3,9 +3,10 @@ Base tool class with built-in validation and retries.
 """
 
 from abc import ABC, abstractmethod
-from typing import Any, Type
+from typing import Any, Optional, Type
 from pydantic import BaseModel, ValidationError
 from langchain_core.tools import BaseTool as LangChainBaseTool
+from langchain_core.runnables import RunnableConfig
 
 
 class ToolExecutionError(Exception):
@@ -61,7 +62,9 @@ class StructuredTool(LangChainBaseTool, ABC):
         last_exception = None
         for attempt in range(self.max_retries):
             try:
-                result = self.execute(validated)
+                # Support passing config if provided in kwargs or if we have it
+                config = kwargs.pop("config", None)
+                result = self.execute(validated, config=config)
 
                 execution_time = time.time() - start_time
                 safe_result = PIISanitizer.sanitize_output(result) if isinstance(result, dict) else str(result)[:200]
@@ -111,7 +114,8 @@ class StructuredTool(LangChainBaseTool, ABC):
         last_exception = None
         for attempt in range(self.max_retries):
             try:
-                result = await self.aexecute(validated)
+                config = kwargs.pop("config", None)
+                result = await self.aexecute(validated, config=config)
                 if isinstance(result, BaseModel):
                     return result.model_dump()
                 return result
@@ -128,7 +132,7 @@ class StructuredTool(LangChainBaseTool, ABC):
         )
 
     @abstractmethod
-    def execute(self, validated_input: BaseModel) -> Any:
+    def execute(self, validated_input: BaseModel, config: Optional[RunnableConfig] = None) -> Any:
         """
         Execute the tool's main logic with validated input.
 
@@ -140,11 +144,11 @@ class StructuredTool(LangChainBaseTool, ABC):
         """
         pass
 
-    async def aexecute(self, validated_input: BaseModel) -> Any:
+    async def aexecute(self, validated_input: BaseModel, config: Optional[RunnableConfig] = None) -> Any:
         """
         Async version of execute. Override if tool supports async.
         By default, calls sync execute in a thread.
         """
         import asyncio
 
-        return await asyncio.to_thread(self.execute, validated_input)
+        return await asyncio.to_thread(self.execute, validated_input, config)

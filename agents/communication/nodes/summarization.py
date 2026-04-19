@@ -9,9 +9,9 @@ from typing import Any, Dict, List
 
 from langchain_core.messages import ToolMessage, AIMessage
 from agents.communication.schemas import MeetingState, ActionItem
+from langchain_core.runnables import RunnableConfig
 
-
-def retrieve_transcript_node(state: MeetingState) -> Dict[str, Any]:
+def retrieve_transcript_node(state: MeetingState, config: RunnableConfig) -> Dict[str, Any]:
     """
     Retrieve transcript from state or DB. Falls back to a prompt for input.
     In production: fetch from recording service (Zoom/Teams) or storage bucket.
@@ -48,7 +48,7 @@ def retrieve_transcript_node(state: MeetingState) -> Dict[str, Any]:
     }
 
 
-def extract_key_points_node(state: MeetingState) -> Dict[str, Any]:
+def extract_key_points_node(state: MeetingState, config: RunnableConfig) -> Dict[str, Any]:
     """Use MeetingSummarizerTool (LLM) to extract structured content."""
     from agents.communication.tools.summarizer_tool import (
         MeetingSummarizerTool,
@@ -66,7 +66,8 @@ def extract_key_points_node(state: MeetingState) -> Dict[str, Any]:
             meeting_title=state.get("title"),
             attendees=attendee_names,
             duration_mins=state.get("duration_minutes"),
-        )
+        ),
+        config=config
     )
 
     action_items: List[ActionItem] = [
@@ -92,7 +93,7 @@ def extract_key_points_node(state: MeetingState) -> Dict[str, Any]:
     }
 
 
-def generate_summary_node(state: MeetingState) -> Dict[str, Any]:
+def generate_summary_node(state: MeetingState, config: RunnableConfig) -> Dict[str, Any]:
     """Format executive summary and save to global memory."""
     from memory.global_context import get_global_context
 
@@ -147,7 +148,7 @@ def generate_summary_node(state: MeetingState) -> Dict[str, Any]:
     }
 
 
-def draft_followup_node(state: MeetingState) -> Dict[str, Any]:
+def draft_followup_node(state: MeetingState, config: RunnableConfig) -> Dict[str, Any]:
     """Draft follow-up email using EmailDraftTool."""
     from agents.communication.tools.email_draft_tool import (
         EmailDraftTool,
@@ -171,7 +172,8 @@ def draft_followup_node(state: MeetingState) -> Dict[str, Any]:
             recipients=recipient_emails or ["team@company.com"],
             subject=f"Follow-up: {state.get('title', 'Meeting')}",
             context="\n".join(context_lines),
-        )
+        ),
+        config=config
     )
 
     return {

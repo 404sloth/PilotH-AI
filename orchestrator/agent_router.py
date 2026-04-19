@@ -10,6 +10,8 @@ from typing import Any, Dict, Optional
 logger = logging.getLogger(__name__)
 
 
+from langchain_core.runnables import RunnableConfig
+
 class AgentRouter:
     def route(
         self,
@@ -17,6 +19,7 @@ class AgentRouter:
         action: str,
         payload: Dict[str, Any],
         session_id: Optional[str] = None,
+        config: Optional[RunnableConfig] = None,
     ) -> Dict[str, Any]:
         from backend.services.agent_registry import get_agent
 
@@ -42,7 +45,7 @@ class AgentRouter:
             
             input_data = {"action": action, "session_id": session_id, "messages": history, **payload}
             logger.info("Routing to agent='%s' action='%s'", agent_name, action)
-            return agent.execute(input_data)
+            return agent.execute(input_data, config=config)
         except Exception as e:
             logger.error("Agent execution failed: %s", str(e))
             return {
@@ -70,8 +73,8 @@ class AgentRouter:
                 _agents[agent_name] = agent
                 logger.info("✓ Vendor Management Agent initialized on demand")
             elif agent_name == "meetings_communication":
-                from agents.communication.agent import MeetingCommunicationAgent
-                agent = MeetingCommunicationAgent(config=config, tool_registry=registry, hitl_manager=hitl)
+                from agents.communication.agent import CommunicationAgent
+                agent = CommunicationAgent(config=config, tool_registry=registry, hitl_manager=hitl)
                 _agents[agent_name] = agent
                 logger.info("✓ Meetings & Communication Agent initialized on demand")
             elif agent_name == "knowledge_base":

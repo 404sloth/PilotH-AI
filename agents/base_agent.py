@@ -2,11 +2,14 @@
 Base agent class providing common functionality for all specialized agents.
 """
 
+import os
+
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional, Type
 from pydantic import BaseModel, ValidationError
 from langgraph.graph import StateGraph
 from langchain_core.tools import BaseTool
+from langchain_core.runnables import RunnableConfig
 
 from human_loop.manager import HITLManager
 from llm.model_factory import ModelFactory
@@ -105,7 +108,7 @@ class BaseAgent(ABC):
         """
         pass
 
-    def execute(self, input_data: Dict[str, Any]) -> Dict[str, Any]:
+    def execute(self, input_data: Dict[str, Any], config: Optional[RunnableConfig] = None) -> Dict[str, Any]:
         """
         Execute the agent's workflow with validated input.
 
@@ -119,6 +122,7 @@ class BaseAgent(ABC):
             AgentInputError: If input validation fails
             AgentOutputError: If output validation fails
         """
+        from langchain_core.runnables import RunnableConfig
         from observability.logger import get_logger
         from observability.pii_sanitizer import PIISanitizer
         import time
@@ -138,17 +142,28 @@ class BaseAgent(ABC):
             validated_input = self.validate_input(input_data)
             graph = self.get_subgraph()
 
-            # Prepare execution config for tracing
-            config = {}
+            # ── 🔍 LangSmith Tracing Configuration ────────────────────────────────
+            # We explicitly create the tracer here to ensure it's attached to the invoke() call
+            callbacks = []
             if os.getenv("LANGCHAIN_TRACING_V2") == "true":
                 try:
                     from langchain.callbacks.tracers.langsmith import LangSmithTracer
-                    config["callbacks"] = [LangSmithTracer(project_name=os.getenv("LANGCHAIN_PROJECT", "ai-agents-testing"))]
-                except (ImportError, Exception):
-                    pass
+                    project = os.getenv("LANGCHAIN_PROJECT", "ai-agents-testing")
+                    callbacks.append(LangSmithTracer(project_name=project))
+                except (ImportError, Exception) as e:
+                    logger.warning("Could not initialize LangSmithTracer, skipping callback export: %s", e)
+
+            # Create the runnable config that will be propagated to ALL nodes
+            # If a config was passed in, we use its callbacks/tags/metadata if they exist
+            runnable_config = RunnableConfig(
+                callbacks=config.callbacks if config and config.callbacks else callbacks,
+                tags=config.tags if config and config.tags else [self.name, input_data.get("session_id", "no_session")],
+                metadata={**(config.metadata if config and config.metadata else {}), "agent": self.name, "session_id": input_data.get("session_id")},
+            )
 
             # Run the graph (uses checkpointer from orchestrator context if provided)
-            result = graph.invoke(validated_input, config=config)
+            # LangGraph propagates this config (including callbacks) to all nodes
+            result = graph.invoke(validated_input, config=runnable_config)
 
             validated_output = self.validate_output(result)
 
@@ -173,20 +188,30 @@ class BaseAgent(ABC):
             })
             raise
 
-    async def aexecute(self, input_data: Dict[str, Any]) -> Dict[str, Any]:
+    async def aexecute(self, input_data: Dict[str, Any], config: Optional[RunnableConfig] = None) -> Dict[str, Any]:
         """Async version of execute."""
+        from langchain_core.runnables import RunnableConfig
+        import os
+
         validated_input = self.validate_input(input_data)
         graph = self.get_subgraph()
 
-        # Prepare execution config for tracing
-        config = {}
+        # ── 🔍 LangSmith Tracing Configuration ────────────────────────────────
+        callbacks = []
         if os.getenv("LANGCHAIN_TRACING_V2") == "true":
             try:
                 from langchain.callbacks.tracers.langsmith import LangSmithTracer
-                config["callbacks"] = [LangSmithTracer(project_name=os.getenv("LANGCHAIN_PROJECT", "ai-agents-testing"))]
+                project = os.getenv("LANGCHAIN_PROJECT", "ai-agents-testing")
+                callbacks.append(LangSmithTracer(project_name=project))
             except (ImportError, Exception):
                 pass
 
-        result = await graph.ainvoke(validated_input, config=config)
+        runnable_config = RunnableConfig(
+            callbacks=config.callbacks if config and config.callbacks else callbacks,
+            tags=config.tags if config and config.tags else [self.name, input_data.get("session_id", "no_session")],
+            metadata={**(config.metadata if config and config.metadata else {}), "agent": self.name, "session_id": input_data.get("session_id")},
+        )
+
+        result = await graph.ainvoke(validated_input, config=runnable_config)
         validated_output = self.validate_output(result)
         return validated_output

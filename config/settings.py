@@ -3,8 +3,11 @@ Settings — centralised configuration with environment variable support.
 All sensitive values come from environment or .env file. No defaults for secrets.
 """
 
+import logging
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field
+
+logger = logging.getLogger(__name__)
 
 
 class Settings(BaseSettings):
@@ -38,11 +41,9 @@ class Settings(BaseSettings):
     )
 
     # ── Observability ───────────────────────────────────────
-    langchain_api_key: str = Field("", description="LangSmith tracing API key")
-    langchain_project: str = Field(
-        "ai-agents-testing", description="LangSmith project name"
-    )
-    langchain_tracing_v2: bool = Field(True, description="Enable LangSmith tracing")
+    langchain_api_key: str = Field("", description="LangSmith tracing API key", validation_alias="langsmith_api_key")
+    langchain_project: str = Field("ai-agents-testing", description="LangSmith project name", validation_alias="langsmith_project")
+    langchain_tracing_v2: bool = Field(True, description="Enable LangSmith tracing", validation_alias="langsmith_tracing_v2")
 
     # ── Server ──────────────────────────────────────────────
     host: str = Field("0.0.0.0")
@@ -53,4 +54,28 @@ class Settings(BaseSettings):
         env_file=".env",
         env_file_encoding="utf-8",
         case_sensitive=False,
+        extra="ignore",
     )
+
+    def model_post_init(self, __context) -> None:
+        """Export LangChain tracing variables to os.environ so the library picks them up."""
+        import os
+        # If an API key is present, we likely want tracing enabled even if .env says false
+        # especially since the user explicitly asked to fix the "no traces" issue.
+        enable_tracing = self.langchain_tracing_v2 or bool(self.langchain_api_key)
+        
+        if enable_tracing and self.langchain_api_key:
+            os.environ["LANGCHAIN_TRACING_V2"] = "true"
+            os.environ["LANGCHAIN_API_KEY"] = self.langchain_api_key
+            os.environ["LANGCHAIN_PROJECT"] = self.langchain_project or "piloth-default"
+            os.environ["LANGCHAIN_ENDPOINT"] = "https://api.smith.langchain.com"
+            
+            # Ensure other crucial keys are also in environ
+            if self.openai_api_key:
+                os.environ["OPENAI_API_KEY"] = self.openai_api_key
+            if self.groq_api_key:
+                os.environ["GROQ_API_KEY"] = self.groq_api_key
+                
+            logger.info("[Observability] LangSmith Tracing enabled for project: %s", os.environ["LANGCHAIN_PROJECT"])
+        else:
+            logger.info("[Observability] LangSmith Tracing is disabled.")

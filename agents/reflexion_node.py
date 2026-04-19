@@ -16,7 +16,9 @@ class ReflexionOutput(BaseModel):
     improved_plan: str = Field(..., description="Actionable alternative step to take.")
     should_retry: bool = Field(..., description="Whether to retry execution or abort gracefully.")
 
-def reflexion_node(state: Dict[str, Any]) -> Dict[str, Any]:
+from langchain_core.runnables import RunnableConfig
+
+def reflexion_node(state: Dict[str, Any], config: RunnableConfig) -> Dict[str, Any]:
     """
     Called when an agent state has an error property or requires human intervention 
     due to unexpected tool failures. Generates learning reflection.
@@ -46,7 +48,7 @@ def reflexion_node(state: Dict[str, Any]) -> Dict[str, Any]:
         response: ReflexionOutput = llm.invoke([
             SystemMessage(content="You are the system's Reflexion module. Learn from failure."),
             HumanMessage(content=prompt)
-        ])
+        ], config=config)
         
         # Save to memory
         save_reflection(

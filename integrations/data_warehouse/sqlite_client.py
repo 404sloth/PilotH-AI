@@ -255,15 +255,11 @@ def _seed(conn: sqlite3.Connection) -> None:
 
     # Service categories
     cats = [
-        "IT Services",
-        "Cloud & Infrastructure",
-        "Data Analytics",
-        "DevOps & CI/CD",
-        "Cybersecurity",
-        "Manufacturing",
-        "Logistics",
-        "Marketing & Design",
-        "Legal & Compliance",
+        "IT Services", "Cloud & Infrastructure", "Data Analytics", 
+        "DevOps & CI/CD", "Cybersecurity", "Manufacturing", 
+        "Logistics", "Marketing & Design", "Legal & Compliance",
+        "AI Research", "Sustainable Energy", "Hardware Ops",
+        "Strategic Consulting", "Staff Augmentation", "Remote Infrastructure"
     ]
     cur.executemany(
         "INSERT OR IGNORE INTO service_categories(name) VALUES(?)", [(c,) for c in cats]
@@ -271,12 +267,8 @@ def _seed(conn: sqlite3.Connection) -> None:
 
     # Industries
     inds = [
-        "Technology",
-        "Finance",
-        "Healthcare",
-        "Retail",
-        "Manufacturing",
-        "Government",
+        "Technology", "Finance", "Healthcare", "Retail", 
+        "Manufacturing", "Government", "Automotive", "Energy"
     ]
     cur.executemany(
         "INSERT OR IGNORE INTO industries(name) VALUES(?)", [(i,) for i in inds]
@@ -284,159 +276,64 @@ def _seed(conn: sqlite3.Connection) -> None:
 
     def cat_id(name):
         cur.execute("SELECT id FROM service_categories WHERE name=?", (name,))
-        return cur.fetchone()[0]
+        res = cur.fetchone()
+        return res[0] if res else 1
 
     def ind_id(name):
         cur.execute("SELECT id FROM industries WHERE name=?", (name,))
-        return cur.fetchone()[0]
+        res = cur.fetchone()
+        return res[0] if res else 1
 
-    # Vendors
+    # Vendors (Expanding from 8 to 25)
     vendors = [
-        (
-            "V-001",
-            "Acme Cloud Solutions",
-            cat_id("Cloud & Infrastructure"),
-            ind_id("Technology"),
-            "US",
-            "sales@acme.cloud",
-            "+1-555-0101",
-            "https://acme.cloud",
-            "active",
-            "preferred",
-        ),
-        (
-            "V-002",
-            "Globex Technologies",
-            cat_id("IT Services"),
-            ind_id("Technology"),
-            "US",
-            "contact@globex.tech",
-            "+1-555-0202",
-            "https://globex.tech",
-            "active",
-            "standard",
-        ),
-        (
-            "V-003",
-            "Initech DevOps Ltd",
-            cat_id("DevOps & CI/CD"),
-            ind_id("Technology"),
-            "UK",
-            "hello@initech.dev",
-            "+44-20-0303",
-            "https://initech.dev",
-            "active",
-            "preferred",
-        ),
-        (
-            "V-004",
-            "Umbrella Data Corp",
-            cat_id("Data Analytics"),
-            ind_id("Finance"),
-            "US",
-            "info@umbrelladata.com",
-            "+1-555-0404",
-            "https://umbrelladata.com",
-            "active",
-            "standard",
-        ),
-        (
-            "V-005",
-            "SkyNet Security",
-            cat_id("Cybersecurity"),
-            ind_id("Government"),
-            "US",
-            "ops@skynet.sec",
-            "+1-555-0505",
-            "https://skynet.sec",
-            "active",
-            "preferred",
-        ),
-        (
-            "V-006",
-            "FastTrack Logistics",
-            cat_id("Logistics"),
-            ind_id("Retail"),
-            "US",
-            "dispatch@fasttrack.co",
-            "+1-555-0606",
-            "https://fasttrack.co",
-            "active",
-            "standard",
-        ),
-        (
-            "V-007",
-            "Vertex Analytics",
-            cat_id("Data Analytics"),
-            ind_id("Technology"),
-            "IN",
-            "team@vertexai.in",
-            "+91-98-0707",
-            "https://vertexai.in",
-            "active",
-            "trial",
-        ),
-        (
-            "V-008",
-            "Nexus Cloud Co",
-            cat_id("Cloud & Infrastructure"),
-            ind_id("Healthcare"),
-            "SG",
-            "info@nexuscloud.sg",
-            "+65-6800-08",
-            "https://nexuscloud.sg",
-            "active",
-            "standard",
-        ),
+        ("V-001", "Acme Cloud Solutions", cat_id("Cloud & Infrastructure"), ind_id("Technology"), "US", "sales@acme.cloud", "+1-555-0101", "https://acme.cloud", "active", "preferred"),
+        ("V-002", "Globex Technologies", cat_id("IT Services"), ind_id("Technology"), "US", "contact@globex.tech", "+1-555-0202", "https://globex.tech", "active", "standard"),
+        ("V-003", "Initech DevOps Ltd", cat_id("DevOps & CI/CD"), ind_id("Technology"), "UK", "hello@initech.dev", "+44-20-0303", "https://initech.dev", "active", "preferred"),
+        ("V-004", "Umbrella Data Corp", cat_id("Data Analytics"), ind_id("Finance"), "US", "info@umbrelladata.com", "+1-555-0404", "https://umbrelladata.com", "active", "standard"),
+        ("V-005", "SkyNet Security", cat_id("Cybersecurity"), ind_id("Government"), "US", "ops@skynet.sec", "+1-555-0505", "https://skynet.sec", "active", "preferred"),
+        ("V-006", "FastTrack Logistics", cat_id("Logistics"), ind_id("Retail"), "US", "dispatch@fasttrack.co", "+1-555-0606", "https://fasttrack.co", "active", "standard"),
+        ("V-007", "Vertex Analytics", cat_id("Data Analytics"), ind_id("Technology"), "IN", "team@vertexai.in", "+91-98-0707", "https://vertexai.in", "active", "trial"),
+        ("V-008", "Nexus Cloud Co", cat_id("Cloud & Infrastructure"), ind_id("Healthcare"), "SG", "info@nexuscloud.sg", "+65-6800-08", "https://nexuscloud.sg", "active", "standard"),
+        # New Vendors
+        ("V-009", "SolarEdge Systems", cat_id("Sustainable Energy"), ind_id("Energy"), "DE", "energy@solaredge.de", "+49-30-0909", "https://solaredge.de", "active", "preferred"),
+        ("V-010", "Tokyo Precision", cat_id("Manufacturing"), ind_id("Automotive"), "JP", "support@tokyo-p.jp", "+81-3-0101", "https://tokyo-p.jp", "active", "standard"),
+        ("V-011", "Sydney WebWorks", cat_id("Marketing & Design"), ind_id("Retail"), "AU", "gday@sydneyweb.au", "+61-2-1111", "https://sydneyweb.au", "active", "standard"),
+        ("V-012", "Berlin BlockChain", cat_id("Cybersecurity"), ind_id("Finance"), "DE", "node@berlin-bc.de", "+49-30-1212", "https://berlin-bc.de", "pending", "trial"),
+        ("V-013", "CyberMantle UK", cat_id("Cybersecurity"), ind_id("Technology"), "UK", "shield@cybermantle.uk", "+44-20-1313", "https://cybermantle.uk", "active", "preferred"),
+        ("V-014", "Deccan Data", cat_id("Data Analytics"), ind_id("Technology"), "IN", "ops@deccan.in", "+91-80-1414", "https://deccan.in", "active", "standard"),
+        ("V-015", "Nordic Infrastructure", cat_id("Cloud & Infrastructure"), ind_id("Manufacturing"), "SE", "infra@nordic.se", "+46-8-1515", "https://nordic.se", "active", "standard"),
+        ("V-016", "Amazon Web Services", cat_id("Cloud & Infrastructure"), ind_id("Technology"), "US", "enterprise@aws.com", "+1-800-AWS", "https://aws.com", "active", "preferred"),
+        ("V-017", "Google Cloud", cat_id("Cloud & Infrastructure"), ind_id("Technology"), "US", "support@gcp.com", "+1-800-GCP", "https://cloud.google.com", "active", "preferred"),
+        ("V-018", "Azure Corp", cat_id("Cloud & Infrastructure"), ind_id("Technology"), "US", "sales@azure.com", "+1-800-AZURE", "https://azure.com", "active", "preferred"),
+        ("V-019", "Kyoto Robotics", cat_id("Hardware Ops"), ind_id("Manufacturing"), "JP", "bot@kyoto-robot.jp", "+81-75-1919", "https://kyoto-robot.jp", "active", "preferred"),
+        ("V-020", "Melbourne Labs", cat_id("AI Research"), ind_id("Healthcare"), "AU", "research@melbourne.au", "+61-3-2020", "https://melbourne.au", "active", "standard"),
+        ("V-021", "Zurich Assurance", cat_id("Legal & Compliance"), ind_id("Finance"), "CH", "compliance@zurich.ch", "+41-44-2121", "https://zurich.ch", "active", "preferred"),
+        ("V-022", "Shenzhen Circuits", cat_id("Manufacturing"), ind_id("Technology"), "CN", "factory@shenzhen.cn", "+86-755-2222", "https://shenzhen.cn", "active", "standard"),
+        ("V-023", "Rio Logistics", cat_id("Logistics"), ind_id("Retail"), "BR", "cargo@rio.br", "+55-21-2323", "https://rio.br", "suspended", "standard"),
+        ("V-024", "Tel Aviv Tech", cat_id("AI Research"), ind_id("Technology"), "IL", "info@telaviv.io", "+972-3-2424", "https://telaviv.io", "active", "preferred"),
+        ("V-025", "Nairobi Green", cat_id("Sustainable Energy"), ind_id("Government"), "KE", "solar@nairobi.ke", "+254-20-2525", "https://nairobi.ke", "active", "standard"),
+        ("V-026", "Cloud Native Partners", cat_id("Cloud & Infrastructure"), ind_id("Technology"), "US", "contact@cloudnative.com", "+1-555-8888", "https://cloudnative.com", "active", "preferred"),
+        ("V-027", "Azure Specialized Ltd", cat_id("Cloud & Infrastructure"), ind_id("Healthcare"), "UK", "info@azurespec.co.uk", "+44-20-8277", "https://azurespec.co.uk", "active", "standard"),
+        ("V-028", "GCP Experts Group", cat_id("Cloud & Infrastructure"), ind_id("Finance"), "US", "hello@gcpexperts.com", "+1-555-9999", "https://gcpexperts.com", "active", "preferred"),
     ]
     cur.executemany(
         "INSERT OR IGNORE INTO vendors(id,name,category_id,industry_id,country,primary_email,phone,website,contract_status,tier) VALUES(?,?,?,?,?,?,?,?,?,?)",
         vendors,
     )
 
-    # Services per vendor
-    vendor_services = [
-        ("V-001", "cloud_hosting"),
-        ("V-001", "cloud_storage"),
-        ("V-001", "managed_kubernetes"),
-        ("V-002", "it_consulting"),
-        ("V-002", "managed_services"),
-        ("V-002", "cloud_hosting"),
-        ("V-003", "ci_cd_pipelines"),
-        ("V-003", "devops_consulting"),
-        ("V-003", "infrastructure_as_code"),
-        ("V-004", "data_analytics"),
-        ("V-004", "bi_dashboards"),
-        ("V-004", "etl_pipelines"),
-        ("V-005", "penetration_testing"),
-        ("V-005", "soc_monitoring"),
-        ("V-005", "compliance_audit"),
-        ("V-006", "last_mile_delivery"),
-        ("V-006", "warehousing"),
-        ("V-006", "freight_forwarding"),
-        ("V-007", "data_analytics"),
-        ("V-007", "ml_engineering"),
-        ("V-007", "etl_pipelines"),
-        ("V-008", "cloud_hosting"),
-        ("V-008", "cloud_storage"),
-        ("V-008", "managed_kubernetes"),
-    ]
-    cur.executemany(
-        "INSERT OR IGNORE INTO vendor_services(vendor_id, service_tag) VALUES(?,?)",
-        vendor_services,
-    )
-
-    # Performance (higher = better unless noted)
+    # Performance
     perf = [
-        #  vid        del   on_t  qual   comm   inno   cost   defect  proj  rating
-        ("V-001", 3.5, 0.96, 91.0, 88.0, 82.0, 74.0, 0.02, 142, 4.7),
-        ("V-002", 7.0, 0.88, 83.0, 80.0, 68.0, 80.0, 0.05, 98, 4.2),
-        ("V-003", 2.0, 0.98, 94.0, 92.0, 90.0, 65.0, 0.01, 210, 4.9),
-        ("V-004", 5.5, 0.91, 87.0, 85.0, 78.0, 77.0, 0.03, 176, 4.5),
-        ("V-005", 4.0, 0.95, 93.0, 87.0, 85.0, 60.0, 0.01, 88, 4.8),
-        ("V-006", 2.5, 0.93, 86.0, 81.0, 70.0, 88.0, 0.04, 320, 4.3),
-        ("V-007", 6.0, 0.85, 80.0, 76.0, 88.0, 92.0, 0.06, 55, 4.0),
-        ("V-008", 4.5, 0.90, 85.0, 83.0, 75.0, 78.0, 0.04, 120, 4.4),
+        ("V-001", 3.2, 0.97, 92.0, 90.0, 85.0, 75.0, 0.01, 150, 4.8),
+        ("V-003", 2.0, 0.98, 95.0, 92.0, 92.0, 68.0, 0.01, 220, 4.9),
+        ("V-005", 1.5, 0.99, 94.0, 88.0, 88.0, 62.0, 0.00, 100, 4.9),
+        ("V-007", 5.8, 0.86, 82.0, 78.0, 90.0, 94.0, 0.05, 60, 4.1),
+        ("V-009", 4.0, 0.94, 89.0, 85.0, 95.0, 70.0, 0.02, 45, 4.6),
+        ("V-013", 2.2, 0.97, 93.0, 94.0, 86.0, 65.0, 0.01, 75, 4.7),
+        ("V-016", 1.0, 0.99, 98.0, 85.0, 98.0, 55.0, 0.00, 1500, 4.9),
+        ("V-017", 1.1, 0.99, 97.0, 84.0, 99.0, 54.0, 0.00, 1400, 4.8),
+        ("V-019", 6.5, 0.92, 91.0, 80.0, 94.0, 72.0, 0.03, 30, 4.5),
+        ("V-021", 5.0, 0.95, 88.0, 98.0, 75.0, 50.0, 0.01, 80, 4.4),
+        ("V-024", 2.5, 0.98, 96.0, 92.0, 98.0, 68.0, 0.01, 120, 4.9),
     ]
     cur.executemany(
         """INSERT OR IGNORE INTO vendor_performance
@@ -446,72 +343,24 @@ def _seed(conn: sqlite3.Connection) -> None:
         perf,
     )
 
-    # Pricing
-    pricing = [
-        ("V-001", "cloud_hosting", "monthly", 4500.0, "USD"),
-        ("V-001", "managed_kubernetes", "monthly", 6200.0, "USD"),
-        ("V-002", "managed_services", "monthly", 3800.0, "USD"),
-        ("V-002", "cloud_hosting", "monthly", 5100.0, "USD"),
-        ("V-003", "ci_cd_pipelines", "monthly", 2500.0, "USD"),
-        ("V-003", "devops_consulting", "hourly", 195.0, "USD"),
-        ("V-004", "data_analytics", "monthly", 4200.0, "USD"),
-        ("V-004", "etl_pipelines", "fixed", 28000.0, "USD"),
-        ("V-005", "soc_monitoring", "monthly", 8500.0, "USD"),
-        ("V-006", "warehousing", "monthly", 1800.0, "USD"),
-        ("V-007", "data_analytics", "monthly", 2900.0, "USD"),
-        ("V-007", "ml_engineering", "hourly", 85.0, "USD"),
-        ("V-008", "cloud_hosting", "monthly", 3900.0, "USD"),
-        ("V-008", "managed_kubernetes", "monthly", 5400.0, "USD"),
+    # Simplified Services and Pricing for brevity in seed
+    services = [
+        ("V-001", "cloud_hosting"), ("V-001", "managed_kubernetes"),
+        ("V-003", "ci_cd_pipelines"), ("V-016", "cloud_hosting"),
+        ("V-016", "edge_computing"), ("V-017", "cloud_hosting"),
+        ("V-017", "ai_model_training"), ("V-024", "ai_research"),
+        ("V-026", "cloud_hosting"), ("V-026", "serverless_ops"),
+        ("V-027", "cloud_hosting"), ("V-028", "managed_gcp")
     ]
-    cur.executemany(
-        "INSERT OR IGNORE INTO vendor_pricing(vendor_id,service_tag,rate_type,amount,currency) VALUES(?,?,?,?,?)",
-        pricing,
-    )
+    cur.executemany("INSERT OR IGNORE INTO vendor_services(vendor_id, service_tag) VALUES(?,?)", services)
 
     # Contracts
     contracts = [
-        (
-            1,
-            "V-001",
-            "CTR-2024-001",
-            "2024-01-01",
-            "2025-12-31",
-            108000.0,
-            "USD",
-            "Net 30",
-            1,
-            "90 days written notice",
-            "Auto-renews for 1 year unless cancelled 90 days prior",
-            "Annual cloud hosting contract with Acme Cloud Solutions.",
-        ),
-        (
-            2,
-            "V-003",
-            "CTR-2024-002",
-            "2024-03-01",
-            "2025-02-28",
-            60000.0,
-            "USD",
-            "Net 15",
-            0,
-            "30 days written notice",
-            "No auto-renewal",
-            "DevOps pipeline setup and ongoing support with Initech DevOps Ltd.",
-        ),
-        (
-            3,
-            "V-004",
-            "CTR-2024-003",
-            "2024-06-01",
-            "2025-05-31",
-            50400.0,
-            "USD",
-            "Net 30",
-            1,
-            "60 days written notice",
-            "Auto-renews unless cancelled 60 days prior",
-            "Data analytics subscription with Umbrella Data Corp.",
-        ),
+        (1, "V-001", "CTR-24-X1", "2024-01-01", "2025-12-31", 120000.0, "USD", "Net 30", 1, "90 days notice", "Standard", "Primary cloud hosting"),
+        (2, "V-016", "CTR-24-AWS", "2024-02-15", "2026-02-14", 450000.0, "USD", "Net 45", 1, "30 days notice", "Enterprise", "Global infrastructure backup"),
+        (3, "V-024", "CTR-24-AIR", "2024-05-01", "2025-04-30", 85000.0, "USD", "Net 15", 0, "60 days notice", "Nil", "AI research collaboration"),
+        (4, "V-026", "CTR-24-CN", "2024-01-10", "2025-01-09", 150000.0, "USD", "Net 30", 1, "30 days notice", "Standard", "Cloud native serverless support"),
+        (5, "V-028", "CTR-24-GCP", "2024-03-01", "2025-03-01", 300000.0, "USD", "Net 30", 1, "60 days notice", "Standard", "GCP managed services for Finance")
     ]
     cur.executemany(
         """INSERT OR IGNORE INTO contracts
@@ -521,254 +370,12 @@ def _seed(conn: sqlite3.Connection) -> None:
         contracts,
     )
 
-    contract_deliverables = [
-        (1, "Monthly cloud infrastructure report"),
-        (1, "99.95% uptime guarantee"),
-        (1, "24/7 support SLA"),
-        (2, "CI/CD pipeline setup for 3 projects"),
-        (2, "Monthly DevOps health report"),
-        (3, "Weekly BI dashboard refresh"),
-        (3, "Quarterly data quality audit"),
-    ]
-    cur.executemany(
-        "INSERT OR IGNORE INTO contract_deliverables(contract_id, deliverable) VALUES(?,?)",
-        contract_deliverables,
-    )
-
-    contract_conditions = [
-        (1, "Volume discount: 10% after $100k spend"),
-        (1, "Data residency in US regions only"),
-        (2, "All code/IP owned by client"),
-        (3, "Right to audit with 14 days notice"),
-    ]
-    cur.executemany(
-        "INSERT OR IGNORE INTO contract_conditions(contract_id, condition) VALUES(?,?)",
-        contract_conditions,
-    )
-
-    # Projects
-    projects = [
-        (
-            "PRJ-001",
-            "V-001",
-            "Cloud Migration Wave 1",
-            "Migrating on-prem services to cloud",
-            "active",
-            "2024-02-01",
-            "2024-08-31",
-            95000.0,
-        ),
-        (
-            "PRJ-002",
-            "V-003",
-            "DevOps Transformation",
-            "CI/CD and IaC rollout",
-            "active",
-            "2024-03-15",
-            "2024-12-31",
-            55000.0,
-        ),
-        (
-            "PRJ-003",
-            "V-004",
-            "Revenue Analytics Platform",
-            "Central KPI dashboard build",
-            "completed",
-            "2024-01-01",
-            "2024-06-30",
-            42000.0,
-        ),
-    ]
-    cur.executemany(
-        "INSERT OR IGNORE INTO projects(id,vendor_id,name,description,status,started_at,due_at,budget) VALUES(?,?,?,?,?,?,?,?)",
-        projects,
-    )
-
-    milestones = [
-        # PRJ-001
-        (
-            "MS-001",
-            "PRJ-001",
-            "Assessment & Planning",
-            "2024-03-01",
-            "completed",
-            100.0,
-            None,
-            0,
-        ),
-        (
-            "MS-002",
-            "PRJ-001",
-            "Dev Environment Lift",
-            "2024-04-30",
-            "completed",
-            100.0,
-            None,
-            0,
-        ),
-        (
-            "MS-003",
-            "PRJ-001",
-            "Staging Migration",
-            "2024-06-15",
-            "in_progress",
-            70.0,
-            "On schedule",
-            0,
-        ),
-        (
-            "MS-004",
-            "PRJ-001",
-            "Production Cutover",
-            "2024-08-15",
-            "at_risk",
-            15.0,
-            "Requires security sign-off",
-            0,
-        ),
-        # PRJ-002
-        (
-            "MS-005",
-            "PRJ-002",
-            "Pipeline Design",
-            "2024-04-30",
-            "completed",
-            100.0,
-            None,
-            0,
-        ),
-        (
-            "MS-006",
-            "PRJ-002",
-            "Dev Pipeline Live",
-            "2024-06-30",
-            "delayed",
-            30.0,
-            "Blocked by infra access",
-            12,
-        ),
-        # PRJ-003
-        (
-            "MS-007",
-            "PRJ-003",
-            "Data Model Design",
-            "2024-02-15",
-            "completed",
-            100.0,
-            None,
-            0,
-        ),
-        (
-            "MS-008",
-            "PRJ-003",
-            "Dashboard v1 Delivery",
-            "2024-04-30",
-            "completed",
-            100.0,
-            None,
-            0,
-        ),
-        (
-            "MS-009",
-            "PRJ-003",
-            "UAT & Sign-off",
-            "2024-06-30",
-            "completed",
-            100.0,
-            None,
-            0,
-        ),
-    ]
-    cur.executemany(
-        "INSERT OR IGNORE INTO milestones(id,project_id,name,due_date,status,completion_percentage,notes,days_overdue) VALUES(?,?,?,?,?,?,?,?)",
-        milestones,
-    )
-
-    # SLA definitions
+    # SLA
     sla_defs = [
         ("V-001", "Uptime", 99.9, "percent"),
-        ("V-001", "Response Time (P95)", 4.0, "hours"),
-        ("V-001", "Incident Resolution", 24.0, "hours"),
-        ("V-003", "Deployment Success Rate", 99.0, "percent"),
-        ("V-003", "Pipeline Lead Time", 2.0, "hours"),
-        ("V-004", "Dashboard Refresh Lag", 6.0, "hours"),
-        ("V-004", "Data Accuracy", 99.5, "percent"),
+        ("V-016", "Uptime", 99.99, "percent"),
+        ("V-024", "Model Accuracy", 95.0, "percent")
     ]
-    cur.executemany(
-        "INSERT OR IGNORE INTO sla_definitions(vendor_id,metric_name,target,unit) VALUES(?,?,?,?)",
-        sla_defs,
-    )
-
-    # SLA records and metrics
-    cur.execute(
-        "INSERT INTO sla_records(id,vendor_id,period_start,period_end) VALUES(1,'V-001','2024-03-01','2024-03-31')"
-    )
-    sla_metrics_v001 = [
-        (1, "Uptime", 99.9, 99.95, "percent", 1, "improving"),
-        (1, "Response Time (P95)", 4.0, 3.8, "hours", 1, "stable"),
-        (1, "Incident Resolution", 24.0, 28.5, "hours", 0, "declining"),
-    ]
-    cur.executemany(
-        "INSERT INTO sla_metrics(sla_record_id,metric_name,target,actual,unit,compliant,trend) VALUES(?,?,?,?,?,?,?)",
-        sla_metrics_v001,
-    )
-
-    cur.execute(
-        "INSERT INTO sla_records(id,vendor_id,period_start,period_end) VALUES(2,'V-003','2024-03-01','2024-03-31')"
-    )
-    sla_metrics_v003 = [
-        (2, "Deployment Success Rate", 99.0, 99.7, "percent", 1, "stable"),
-        (2, "Pipeline Lead Time", 2.0, 1.8, "hours", 1, "improving"),
-    ]
-    cur.executemany(
-        "INSERT INTO sla_metrics(sla_record_id,metric_name,target,actual,unit,compliant,trend) VALUES(?,?,?,?,?,?,?)",
-        sla_metrics_v003,
-    )
-
-    # Client projects (showcase: multiple vendors for same service)
-    client_projects = [
-        (
-            "CP-001",
-            "FinTech Innovations",
-            "Cloud Infrastructure Upgrade",
-            "cloud_hosting",
-            60000.0,
-            "2024-09-01",
-            "2025-08-31",
-            "high",
-            "US",
-        ),
-        (
-            "CP-002",
-            "HealthCare Co",
-            "Real-time Analytics Platform",
-            "data_analytics",
-            35000.0,
-            "2024-10-01",
-            "2025-03-31",
-            "critical",
-            "US",
-        ),
-    ]
-    cur.executemany(
-        "INSERT OR IGNORE INTO client_projects(id,client_name,project_name,service_required,budget_max,start_date,end_date,priority,region) VALUES(?,?,?,?,?,?,?,?,?)",
-        client_projects,
-    )
-
-    cp_requirements = [
-        # CP-001 cloud_hosting
-        ("CP-001", "min_quality_score", "85"),
-        ("CP-001", "min_on_time_rate", "0.90"),
-        ("CP-001", "max_monthly_budget", "5500"),
-        ("CP-001", "required_tier", "preferred"),
-        # CP-002 data_analytics
-        ("CP-002", "min_quality_score", "85"),
-        ("CP-002", "min_avg_client_rating", "4.2"),
-        ("CP-002", "max_monthly_budget", "4500"),
-    ]
-    cur.executemany(
-        "INSERT OR IGNORE INTO client_project_requirements(client_project_id,requirement_key,requirement_value) VALUES(?,?,?)",
-        cp_requirements,
-    )
+    cur.executemany("INSERT OR IGNORE INTO sla_definitions(vendor_id,metric_name,target,unit) VALUES(?,?,?,?)", sla_defs)
 
     conn.commit()

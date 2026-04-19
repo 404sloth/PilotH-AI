@@ -3,6 +3,7 @@
 from __future__ import annotations
 from typing import List, Optional
 from pydantic import BaseModel, Field
+from langchain_core.runnables import RunnableConfig
 from tools.base_tool import StructuredTool
 
 
@@ -34,7 +35,7 @@ class EmailDraftTool(StructuredTool):
     )
     args_schema: type[BaseModel] = EmailDraftInput
 
-    def execute(self, inp: EmailDraftInput) -> EmailDraftOutput:
+    def execute(self, inp: EmailDraftInput, config: Optional[RunnableConfig] = None) -> EmailDraftOutput:
         subject = (
             inp.subject or f"[{inp.email_type.replace('_', ' ').title()}] Meeting Notes"
         )
@@ -48,7 +49,7 @@ Context: {inp.context}
 
 Return ONLY the email body text (no subject line). Keep it concise and actionable."""
 
-        body = self._call_llm(prompt)
+        body = self._call_llm(prompt, config)
 
         return EmailDraftOutput(
             subject=subject,
@@ -57,13 +58,13 @@ Return ONLY the email body text (no subject line). Keep it concise and actionabl
             preview=body[:120] + "..." if len(body) > 120 else body,
         )
 
-    def _call_llm(self, prompt: str) -> str:
+    def _call_llm(self, prompt: str, config: Optional[RunnableConfig] = None) -> str:
         try:
             from llm.model_factory import get_llm
             from langchain_core.messages import HumanMessage
 
             llm = get_llm(temperature=0.4)
-            return llm.invoke([HumanMessage(content=prompt)]).content.strip()
+            return llm.invoke([HumanMessage(content=prompt)], config=config).content.strip()
         except Exception:
             return (
                 "Dear Team,\n\nThank you for joining today's meeting. "

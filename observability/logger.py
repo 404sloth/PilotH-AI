@@ -7,7 +7,9 @@ Provides:
   - Request/response logging with correlation IDs
   - Performance metrics per operation
   - Structured JSON output for log aggregation
+- File-based logging to logs/pilot_h.log
 """
+
 
 from __future__ import annotations
 
@@ -15,6 +17,7 @@ import json
 import logging
 import time
 import uuid
+import os
 from contextlib import contextmanager
 from typing import Any, Dict, List, Optional
 
@@ -25,9 +28,21 @@ class StructuredLogger:
     def __init__(self, name: str, sanitize_pii: bool = True):
         """Initialize structured logger."""
         self.logger = logging.getLogger(name)
+        self.logger.setLevel(logging.INFO)
         self.sanitize_pii = sanitize_pii
         self.correlation_id = str(uuid.uuid4())
         self.session_stack: List[str] = []
+        
+        # Ensure log directory exists
+        log_dir = "logs"
+        if not os.path.exists(log_dir):
+            os.makedirs(log_dir)
+            
+        file_handler = logging.FileHandler(os.path.join(log_dir, "pilot_h.log"))
+        file_handler.setFormatter(logging.Formatter("%(message)s"))
+        file_handler.setLevel(logging.INFO)
+        self.logger.addHandler(file_handler)
+
 
     def _sanitize(self, data: Any) -> Any:
         """Sanitize PII from data."""
@@ -181,10 +196,11 @@ def log_agent_action(
     logger = get_logger(f"agent.{agent_name}")
 
     data = {
-        "input": input_data,
-        "result": result,
+        "input": PIISanitizer.sanitize_dict(input_data) if input_data else None,
+        "result": PIISanitizer.sanitize_output(result) if result else None,
         "duration_ms": duration_ms,
     }
+
 
     if error:
         logger.error(f"Action failed: {action}", agent=agent_name, error=error, data=data)
@@ -204,10 +220,11 @@ def log_tool_execution(
     logger = get_logger(f"tool.{tool_name}")
 
     data = {
-        "input": input_args,
-        "output": output,
+        "input": PIISanitizer.sanitize_dict(input_args) if input_args else None,
+        "output": PIISanitizer.sanitize_output(output) if output else None,
         "duration_ms": duration_ms,
     }
+
 
     if error:
         logger.error(

@@ -18,6 +18,7 @@ from observability.logger import get_logger
 from observability.pii_sanitizer import PIISanitizer
 from observability.metrics import get_metrics
 from observability.tracing import get_tracer
+from langchain_core.runnables import RunnableConfig
 
 logger = logging.getLogger(__name__)
 otel_logger = get_logger("intent_parser")
@@ -231,6 +232,7 @@ class IntentParser:
         context: Optional[Dict[str, Any]] = None,
         conversation_history: Optional[List[Dict[str, str]]] = None,
         agent_hint: Optional[str] = None,
+        config: Optional[RunnableConfig] = None,
     ) -> Dict[str, Any]:
         """
         Parse user message into structured agent + action + params.
@@ -283,10 +285,10 @@ class IntentParser:
             try:
                 # Try advanced LLM parsing
                 result = self._llm_parse_advanced(
-                    safe_message,
                     safe_context,
                     conversation_history,
                     span,
+                    config,
                 )
                 if result and result.get("confidence", 0) >= 0.5:
                     result = self._post_process_intent(message, result)
@@ -328,6 +330,7 @@ class IntentParser:
         context: Dict[str, Any],
         conversation_history: Optional[List[Dict[str, str]]],
         span,
+        config: Optional[RunnableConfig] = None,
     ) -> Dict[str, Any]:
         """
         Use LLM with advanced prompting to understand intent.
@@ -339,50 +342,40 @@ class IntentParser:
         tool_descriptions = self._build_tool_descriptions()
 
         # Build system prompt
-        system_prompt = f"""You are an intelligent agent dispatcher with expertise in:
-1. Vendor management and procurement
-2. Meeting scheduling and communication
-3. Enterprise automation
-
-Your job: Understand user requests and determine which agent and action to execute.
-
-Available Agents and Tools:
+        system_prompt = f"""You are a dispatcher for PilotH. 
+Available Agents/Tools:
 {tool_descriptions}
 
-Instructions:
-1. Carefully analyze the user request
-2. Match to the most relevant agent and action
-3. Extract all relevant parameters from the message (e.g. for vendor searches, look for specific countries, categories, industries, tiers like 'preferred', or contract status like 'active').
-4. Provide confidence score (0.0-1.0) based on clarity
-5. Explain your reasoning
+Task: Determine the best agent, action, and extract parameters from the user request.
+Context: {json.dumps(context)[:400]}
 
-Context:
-{json.dumps(context, indent=2)[:500]}
-
-Return ONLY valid JSON with NO markdown:
+Return JSON only:
 {{
-    "agent": "<agent_name>",
-    "action": "<action_name>",
-    "params": {{<extracted_parameters>}},
-    "confidence": <float>,
-    "reasoning": "<explanation>"
+    "agent": "agent_name",
+    "action": "action_name",
+    "params": {{}},
+    "confidence": 0.0-1.0,
+    "reasoning": "brief why"
 }}"""
 
         # Add conversation history if available
         messages = [SystemMessage(content=system_prompt)]
         if conversation_history:
-            for turn in conversation_history[-5:]:  # Last 5 turns for context
+            for turn in conversation_history:
                 role = turn.get("role", "user")
                 content = turn.get("content", "")
                 if role == "user":
                     messages.append(HumanMessage(content=content))
+                elif role == "system" and "Summary" in content:
+                    # Explicitly preserve the summary for context
+                    messages.append(SystemMessage(content=content))
 
         messages.append(HumanMessage(content=f"User request: {message}"))
 
         # Call LLM
         llm = get_llm(temperature=0.0)
         # Check if we should use specialized intent model if configured
-        response = llm.invoke(messages)
+        response = llm.invoke(messages, config=config)
         content = response.content.strip()
 
         # Parse JSON response
@@ -835,24 +828,14 @@ Return ONLY valid JSON with NO markdown:
         return amount
 
     def _build_tool_descriptions(self) -> str:
-        """Build comprehensive tool descriptions for LLM understanding."""
+        """Build compact tool descriptions for LLM context."""
         descriptions = []
-        
         for agent_key, agent_info in TOOL_REGISTRY.items():
-            descriptions.append(f"\n=== {agent_info.get('agent_name')} ===")
-            descriptions.append(f"Description: {agent_info.get('agent_description')}")
-            descriptions.append("Actions:")
-            
+            descriptions.append(f"\nAGENT: {agent_info.get('agent_name')}")
             for action_key, action_info in agent_info.get("actions", {}).items():
-                descriptions.append(f"\n  • {action_key}")
-                descriptions.append(f"    Description: {action_info.get('description')}")
-                descriptions.append(f"    Triggers: {', '.join(action_info.get('triggers', []))}")
-                
-                if action_info.get("required_params"):
-                    descriptions.append(f"    Required: {', '.join(action_info.get('required_params'))}")
-                if action_info.get("optional_params"):
-                    descriptions.append(f"    Optional: {', '.join(action_info.get('optional_params'))}")
-        
+                params = action_info.get("required_params", []) + action_info.get("optional_params", [])
+                param_str = f" Params: {', '.join(params)}" if params else ""
+                descriptions.append(f"  - {action_key}: {action_info.get('description')}{param_str}")
         return "\n".join(descriptions)
 
     def _is_valid_agent_action(self, agent: str, action: str) -> bool:

@@ -247,7 +247,7 @@ def get_llm(
         logger.info("[LLM] Auto-detected provider: %s", provider)
 
         try:
-            llm = _build_provider_lazy(provider, temperature, model_override)
+            llm = _build_provider_lazy(provider, temperature, model_override, max_tokens)
             if not lazy_validation:
                 if not _test_connection(llm):
                     raise RuntimeError(f"Auto-detected provider {provider} failed connection test")
@@ -256,7 +256,7 @@ def get_llm(
             logger.warning("[LLM] Failed to initialize auto-detected provider %s: %s", provider, str(e)[:100])
 
         # Try full fallback chain
-        return _try_fallback_chain_lazy(exclude=provider, temperature=temperature, model_override=model_override, lazy_validation=lazy_validation)
+        return _try_fallback_chain_lazy(exclude=provider, temperature=temperature, model_override=model_override, max_tokens=max_tokens, lazy_validation=lazy_validation)
 
 
 def _try_fallback_chain_lazy(
@@ -471,71 +471,33 @@ class PromptTemplates:
         """Generate comprehensive system prompt for intent parsing."""
         agent_descriptions = []
         for agent_name, agent_info in available_agents.items():
-            agent_descriptions.append(f"""
-## {agent_info.get('agent_name', agent_name)}
-**Purpose**: {agent_info.get('agent_description', 'No description available')}
-**Available Actions**:
-{chr(10).join(f"- {action}: {info.get('description', 'No description')}" for action, info in agent_info.get('actions', {}).items())}
-**Trigger Phrases**:
-{chr(10).join(f"- {trigger}" for action, info in agent_info.get('actions', {}).items() for trigger in info.get('triggers', []))}
-""")
+            actions = []
+            for action, info in agent_info.get('actions', {}).items():
+                actions.append(f"{action}: {info.get('description', 'No description')}")
+            agent_descriptions.append(f"AGENT: {agent_name}\nDesc: {agent_info.get('agent_description', 'No description')}\nActions: {' | '.join(actions)}")
 
-        return f"""You are an intelligent agent dispatcher for PilotH, a comprehensive enterprise automation platform.
-
-Your role is to analyze user requests and determine the most appropriate agent and action to handle them.
-
-## Available Agents
+        return f"""You are a dispatcher for PilotH.
+Available Agents:
 {chr(10).join(agent_descriptions)}
 
-## Analysis Guidelines
-1. **Understand Context**: Consider the full conversation history and any provided context
-2. **Match Intent**: Look for explicit or implicit requests that match agent capabilities
-3. **Extract Parameters**: Identify specific requirements, constraints, or preferences
-4. **Confidence Scoring**: Rate your confidence from 0.0 to 1.0 based on clarity and match quality
-5. **Fallback Logic**: If unclear, prefer general-purpose agents over rejecting requests
-
-## Response Format
-Return ONLY valid JSON with this exact structure:
+Task: Identify agent and action, extract parameters.
+Return JSON ONLY:
 {{
-    "agent": "agent_name",
-    "action": "action_name",
-    "params": {{
-        "parameter_name": "extracted_value"
-    }},
-    "confidence": 0.85,
-    "reasoning": "Brief explanation of your decision"
-}}
-
-## Important Notes
-- Be flexible with phrasing - users may describe needs in many ways
-- Consider conversation context for multi-turn interactions
-- Default to helpful actions when intent is ambiguous
-- Always provide reasoning for your choices"""
+    "agent": "name",
+    "action": "name",
+    "params": {{}},
+    "confidence": 0.0-1.0,
+    "reasoning": "why"
+}}"""
 
     @staticmethod
     def agent_execution_prompt(agent_name: str, action: str, params: Dict[str, Any], context: Dict[str, Any]) -> str:
-        """Generate comprehensive execution prompt for agents."""
-        return f"""You are {agent_name}, an expert AI agent in the PilotH enterprise automation platform.
-
-## Task
-Execute the action: **{action}**
-
-## Parameters
-{json.dumps(params, indent=2)}
-
-## Context
-{json.dumps(context, indent=2)}
-
-## Guidelines
-1. **Be Thorough**: Provide comprehensive, actionable responses
-2. **Use Data**: Leverage available information and tools
-3. **Be Precise**: Include specific details, numbers, and recommendations
-4. **Explain Reasoning**: Show your thought process and decision criteria
-5. **Handle Errors**: If issues arise, explain them clearly and suggest alternatives
-
-## Response Format
-Provide a detailed, well-structured response that directly addresses the user's needs.
-Include relevant data, analysis, and next steps where appropriate."""
+        """Generate compact execution prompt."""
+        return f"""You are {agent_name}. 
+Task: {action}
+Params: {json.dumps(params)}
+Context: {json.dumps(context)[:500]}
+Goal: Provide a thorough, data-driven response following enterprise standards."""
 
     @staticmethod
     def conversation_summary_prompt(messages: List[Dict[str, Any]]) -> str:

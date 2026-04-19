@@ -82,6 +82,13 @@ type AlertItem = {
   resolved: boolean;
 };
 
+type TraceStep = {
+  id: string;
+  label: string;
+  status: "pending" | "current" | "complete" | "error";
+  icon?: any;
+};
+
 type Health = {
   status: string;
   database?: string;
@@ -128,7 +135,7 @@ const WS_URL = (import.meta.env.VITE_WS_URL as string | undefined) ?? "ws://loca
 let MESSAGE_ID = 0;
 
 const NAV = [
-  { id: "conversations", icon: MessageSquare, label: "Intelligence" },
+  { id: "conversations", icon: MessageSquare, label: "Chat" },
   { id: "dashboard", icon: LayoutDashboard, label: "Pulse" },
   { id: "knowledge", icon: Database, label: "Assets" },
   { id: "research", icon: Globe, label: "Market" },
@@ -185,7 +192,7 @@ function nextMessageId(): number {
 function toChatSession(raw: Record<string, unknown>): ChatSession {
   return {
     id: String(raw.id ?? ""),
-    title: buildConversationTitle(String(raw.last_message ?? "New Operation")),
+    title: buildConversationTitle(String(raw.last_message ?? "New Chat")),
     createdAt: String(raw.created_at ?? new Date().toISOString()),
     updatedAt: String(raw.updated_at ?? new Date().toISOString()),
     lastMessage: String(raw.last_message ?? ""),
@@ -194,8 +201,8 @@ function toChatSession(raw: Record<string, unknown>): ChatSession {
 }
 
 function buildConversationTitle(lastMessage: string): string {
-  const cleaned = stripAgentLabel(lastMessage).trim();
-  if (!cleaned) return "New Operation";
+  const cleaned = stripAgentLabel(lastMessage).replace(/\*\*/g, "").replace(/#/g, "").trim();
+  if (!cleaned) return "New Chat";
   return cleaned.length > 42 ? `${cleaned.slice(0, 42)}…` : cleaned;
 }
 
@@ -306,33 +313,35 @@ function RichText({ text, isUser }: { text: string; isUser: boolean }) {
         key={`table-wrap-${blocks.length}`}
         style={{
           overflowX: "auto",
-          margin: "16px 0",
-          borderRadius: 12,
-          border: `1px solid ${isUser ? "rgba(255,255,255,0.15)" : "#eceff1"}`,
+          margin: "20px 0",
+          borderRadius: 16,
+          boxShadow: isUser ? "0 4px 20px rgba(0,0,0,0.15)" : "0 4px 16px rgba(0,0,0,0.04)",
+          border: `1px solid ${isUser ? "rgba(255,255,255,0.15)" : "#f1f3f4"}`,
         }}
       >
         <table
           style={{
             width: "100%",
-            borderCollapse: "collapse",
+            borderCollapse: "separate",
+            borderSpacing: 0,
             background: isUser ? "rgba(255,255,255,0.06)" : "#ffffff",
             fontSize: 13,
           }}
         >
           <thead>
-            <tr style={{ background: isUser ? "rgba(255,255,255,0.1)" : "#f8f9fa" }}>
+            <tr style={{ background: isUser ? "rgba(255,255,255,0.08)" : "rgba(0, 0, 0, 0.03)" }}>
               {header.map((cell, index) => (
                 <th
                   key={`head-${index}`}
                   style={{
                     textAlign: "left",
-                    padding: "12px 16px",
+                    padding: "16px",
                     fontWeight: 700,
                     textTransform: "uppercase",
-                    letterSpacing: "0.04em",
-                    fontSize: 11,
-                    color: isUser ? "#fff" : "#5f6368",
-                    borderBottom: `1px solid ${isUser ? "rgba(255,255,255,0.15)" : "#eceff1"}`,
+                    letterSpacing: "0.06em",
+                    fontSize: 9,
+                    color: isUser ? "rgba(255,255,255,0.8)" : "#5f6368",
+                    borderBottom: `1px solid ${isUser ? "rgba(255,255,255,0.1)" : "rgba(0, 0, 0, 0.05)"}`,
                   }}
                 >
                   <InlineFormat text={cell} isUser={isUser} />
@@ -345,10 +354,7 @@ function RichText({ text, isUser }: { text: string; isUser: boolean }) {
               <tr
                 key={`row-${rowIndex}`}
                 style={{
-                  borderBottom:
-                    rowIndex < rest.length - 1
-                      ? `1px solid ${isUser ? "rgba(255,255,255,0.05)" : "#f1f3f4"}`
-                      : "none",
+                  background: rowIndex % 2 === 0 ? "transparent" : (isUser ? "rgba(255,255,255,0.02)" : "rgba(0, 0, 0, 0.01)"),
                 }}
               >
                 {row.map((cell, cellIndex) => (
@@ -356,8 +362,9 @@ function RichText({ text, isUser }: { text: string; isUser: boolean }) {
                     key={`cell-${rowIndex}-${cellIndex}`}
                     style={{
                       padding: "12px 16px",
-                      lineHeight: 1.5,
+                      lineHeight: 1.6,
                       color: isUser ? "#fff" : "#3c4043",
+                      borderBottom: rowIndex < rest.length - 1 ? `1px solid ${isUser ? "rgba(255,255,255,0.04)" : "rgba(0, 0, 0, 0.03)"}` : "none",
                     }}
                   >
                     <InlineFormat text={cell} isUser={isUser} />
@@ -461,11 +468,13 @@ function RichText({ text, isUser }: { text: string; isUser: boolean }) {
         <h2
           key={`h1-${index}`}
           style={{
-            margin: "20px 0 10px",
-            fontSize: 20,
-            fontWeight: 700,
-            letterSpacing: "-0.01em",
-            color: isUser ? "#fff" : "#202124",
+            margin: "24px 0 12px",
+            fontSize: 22,
+            fontWeight: 800,
+            letterSpacing: "-0.03em",
+            color: isUser ? "#fff" : "#1a73e8",
+            borderBottom: isUser ? "none" : "1px solid #f1f3f4",
+            paddingBottom: 8,
           }}
         >
           <InlineFormat text={trimmed.slice(2)} isUser={isUser} />
@@ -478,10 +487,11 @@ function RichText({ text, isUser }: { text: string; isUser: boolean }) {
         <h3
           key={`h2-${index}`}
           style={{
-            margin: "16px 0 8px",
-            fontSize: 16,
-            fontWeight: 600,
-            color: isUser ? "#fff" : "#202124",
+            margin: "20px 0 10px",
+            fontSize: 18,
+            fontWeight: 700,
+            letterSpacing: "-0.02em",
+            color: isUser ? "#fff" : "#3c4043",
           }}
         >
           <InlineFormat text={trimmed.slice(3)} isUser={isUser} />
@@ -494,10 +504,12 @@ function RichText({ text, isUser }: { text: string; isUser: boolean }) {
         <h4
           key={`h3-${index}`}
           style={{
-            margin: "14px 0 6px",
-            fontSize: 14,
+            margin: "16px 0 8px",
+            fontSize: 15,
             fontWeight: 700,
-            color: isUser ? "#fff" : "#202124",
+            textTransform: "uppercase",
+            letterSpacing: "0.04em",
+            color: isUser ? "#fff" : "#5f6368",
           }}
         >
           <InlineFormat text={trimmed.slice(4)} isUser={isUser} />
@@ -559,9 +571,12 @@ function InlineFormat({ text, isUser }: { text: string; isUser: boolean }) {
           style={{
             borderRadius: 6,
             padding: "2px 6px",
-            background: isUser ? "rgba(255,255,255,0.2)" : "#f1f3f4",
-            fontFamily: "monospace",
-            fontSize: "0.9em",
+            background: isUser ? "rgba(255,255,255,0.15)" : "rgba(26, 115, 232, 0.05)",
+            color: isUser ? "#fff" : "#1a73e8",
+            border: `1px solid ${isUser ? "rgba(255,255,255,0.1)" : "rgba(26, 115, 232, 0.1)"}`,
+            fontFamily: "'Fira Code', monospace",
+            fontSize: "0.85em",
+            fontWeight: 500,
           }}
         >
           {match[4]}
@@ -573,8 +588,12 @@ function InlineFormat({ text, isUser }: { text: string; isUser: boolean }) {
         <span
           key={`q-${match.index}`}
           style={{
-            color: isUser ? "#fff" : "#1a73e8",
+            color: isUser ? "#fff" : "#e27100",
+            background: isUser ? "rgba(255,255,255,0.08)" : "rgba(226, 113, 0, 0.04)",
+            padding: "0 4px",
+            borderRadius: 4,
             fontWeight: 500,
+            border: `1px solid ${isUser ? "rgba(255,255,255,0.05)" : "rgba(226, 113, 0, 0.08)"}`,
           }}
         >
           “{match[5]}”
@@ -652,9 +671,11 @@ export default function App() {
   const [kbLoading, setKbLoading] = useState(false);
   const [lastRouting, setLastRouting] = useState<RoutingMetadata | null>(null);
   const [routingOpen, setRoutingOpen] = useState(true);
+  const [isCollapsed, setIsCollapsed] = useState(false);
   const [agentPickerOpen, setAgentPickerOpen] = useState(false);
   const [selectedAgentHint, setSelectedAgentHint] = useState<string | null>(null);
   const [dynamicSuggestions, setDynamicSuggestions] = useState<string[]>(INITIAL_SUGGESTIONS);
+  const [tracingExtended, setTracingExtended] = useState(false);
 
   const wsRef = useRef<WebSocket | null>(null);
   const endRef = useRef<HTMLDivElement | null>(null);
@@ -740,10 +761,10 @@ export default function App() {
       const latestAssistantWithRouting = [...history]
         .reverse()
         .find((entry) => entry.role === "assistant" && entry.metadata);
-      
+
       if (latestAssistantWithRouting?.metadata) {
-         setLastRouting(latestAssistantWithRouting.metadata as RoutingMetadata);
-         updateSuggestions(latestAssistantWithRouting.metadata as RoutingMetadata);
+        setLastRouting(latestAssistantWithRouting.metadata as RoutingMetadata);
+        updateSuggestions(latestAssistantWithRouting.metadata as RoutingMetadata);
       }
 
       setMessages(
@@ -768,12 +789,12 @@ export default function App() {
       previous.map((session) =>
         session.id === threadId
           ? {
-              ...session,
-              title: session.title === "New Operation" ? buildConversationTitle(preview) : session.title,
-              lastMessage: preview,
-              updatedAt: new Date().toISOString(),
-              messageCount: session.messageCount + 1,
-            }
+            ...session,
+            title: session.title === "New Chat" ? buildConversationTitle(preview) : session.title,
+            lastMessage: preview,
+            updatedAt: new Date().toISOString(),
+            messageCount: session.messageCount + 1,
+          }
           : session,
       ),
     );
@@ -821,7 +842,7 @@ export default function App() {
     replacePendingUserStatus("delivered");
     const reply = parsed.message ?? "";
     const threadId = parsed.thread_id ?? activeSession;
-    
+
     const combinedMetadata = {
       ...(parsed.metadata ?? {}),
       data: parsed.data ?? parsed.metadata?.data
@@ -829,7 +850,13 @@ export default function App() {
 
     if (parsed.metadata || parsed.data) {
       setLastRouting(combinedMetadata);
-      updateSuggestions(combinedMetadata);
+
+      const metaSuggestions = (parsed.metadata as any)?.suggestions as string[] | undefined;
+      if (metaSuggestions && metaSuggestions.length > 0) {
+        setDynamicSuggestions(metaSuggestions);
+      } else {
+        updateSuggestions(combinedMetadata);
+      }
     }
 
     appendMessage({
@@ -962,7 +989,7 @@ export default function App() {
       setAgentPickerOpen(false);
       setDynamicSuggestions(INITIAL_SUGGESTIONS);
     } catch {
-      setToast({ message: "Failed to start new operation.", type: "error" });
+      setToast({ message: "Failed to start new Chat.", type: "error" });
     }
   }
 
@@ -1025,24 +1052,56 @@ export default function App() {
         ) : null}
       </AnimatePresence>
 
-      <aside style={sidebarStyle}>
-        <div style={sidebarHeaderStyle}>
-          <div style={logoBadgeStyle}>
-            <Sparkles size={20} color="#1a73e8" />
+      <aside
+        style={{
+          ...sidebarStyle,
+          ...(isCollapsed ? { width: 80, padding: "24px 12px 16px" } : {})
+        }}
+      >
+        <div style={{ ...sidebarHeaderStyle, padding: isCollapsed ? "0 0 24px" : "0 8px 24px", justifyContent: isCollapsed ? "center" : "flex-start" }}>
+          <div style={{ ...logoBadgeStyle, width: isCollapsed ? 40 : 44, height: isCollapsed ? 40 : 44 }}>
+            <Sparkles size={isCollapsed ? 18 : 20} color="#1a73e8" />
           </div>
-          <div>
-            <div style={{ fontSize: 18, fontWeight: 700, color: "#202124", letterSpacing: "-0.02em" }}>
-              PilotH
+          {!isCollapsed && (
+            <div>
+              <div style={{ fontSize: 18, fontWeight: 700, color: "#202124", letterSpacing: "-0.02em" }}>
+                Human CoPilot
+              </div>
+              <div style={{ fontSize: 11, fontWeight: 500, color: "#5f6368", letterSpacing: "0.04em", textTransform: "uppercase" }}>
+                AI Executive Assistant
+              </div>
             </div>
-            <div style={{ fontSize: 11, fontWeight: 500, color: "#5f6368", letterSpacing: "0.04em", textTransform: "uppercase" }}>
-              Intelligence Platform
-            </div>
-          </div>
+          )}
         </div>
 
-        <button style={primaryPillButton} onClick={() => void handleNewChat()}>
+        <button
+          style={{ ...primaryPillButton, padding: isCollapsed ? "12px" : "14px 20px", justifyContent: isCollapsed ? "center" : "flex-start" }}
+          onClick={() => void handleNewChat()}
+        >
           <PlusCircle size={18} />
-          New Operation
+          {!isCollapsed && "New Chat"}
+        </button>
+
+        <button
+          style={{
+            position: "absolute",
+            top: 14,
+            right: isCollapsed ? -12 : 8,
+            width: 24,
+            height: 24,
+            borderRadius: "50%",
+            background: "#fff",
+            border: "1px solid #f1f3f4",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            cursor: "pointer",
+            boxShadow: "0 2px 4px rgba(0,0,0,0.05)",
+            zIndex: 100,
+          }}
+          onClick={() => setIsCollapsed(!isCollapsed)}
+        >
+          {isCollapsed ? <ChevronRight size={14} /> : <ChevronDown style={{ transform: "rotate(90deg)" }} size={14} />}
         </button>
 
         <nav style={navContainerStyle}>
@@ -1052,12 +1111,15 @@ export default function App() {
               style={{
                 ...navButtonStyle,
                 ...(activeTab === item.id ? activeNavButtonStyle : {}),
+                justifyContent: isCollapsed ? "center" : "flex-start",
+                padding: isCollapsed ? "10px 0" : "10px 16px",
               }}
               onClick={() => setActiveTab(item.id)}
+              title={isCollapsed ? item.label : undefined}
             >
               <item.icon size={20} />
-              <span>{item.label}</span>
-              {activeTab === item.id ? (
+              {!isCollapsed && <span>{item.label}</span>}
+              {activeTab === item.id && !isCollapsed ? (
                 <motion.div layoutId="nav-active" style={activeNavIndicatorStyle} />
               ) : null}
             </button>
@@ -1065,13 +1127,15 @@ export default function App() {
         </nav>
 
         <div style={sessionsContainerStyle} className="hide-scrollbar">
-          <div style={sectionLabelStyle}>Operation Logs</div>
+          {!isCollapsed && <div style={sectionLabelStyle}>Chat History</div>}
           {sessions.map((session) => (
             <div
               key={session.id}
               style={{
                 ...sessionCardStyle,
                 ...(session.id === activeSession ? activeSessionCardStyle : {}),
+                padding: isCollapsed ? "2px 0" : "2px 8px",
+                justifyContent: isCollapsed ? "center" : "flex-start",
               }}
             >
               <button
@@ -1080,34 +1144,40 @@ export default function App() {
                   setActiveSession(session.id);
                   setActiveTab("conversations");
                 }}
+                disabled={isCollapsed && session.id === activeSession}
+                title={session.title}
               >
                 <div style={sessionIconStyle(session.id === activeSession)}>
                   <MessageCircle size={14} />
                 </div>
-                <div style={{ minWidth: 0, flex: 1, textAlign: "left" }}>
-                  <div style={sessionTitleStyle}>{session.title}</div>
-                  <div style={sessionTimestampStyle}>
-                    {new Date(session.updatedAt).toLocaleDateString([], { month: "short", day: "numeric" })}
+                {!isCollapsed && (
+                  <div style={{ minWidth: 0, flex: 1, textAlign: "left" }}>
+                    <div style={sessionTitleStyle}>{session.title}</div>
+                    <div style={sessionTimestampStyle}>
+                      {new Date(session.updatedAt).toLocaleDateString([], { month: "short", day: "numeric" })}
+                    </div>
                   </div>
-                </div>
+                )}
               </button>
-              <button style={trashButtonStyle} onClick={() => void handleDeleteChat(session.id)}>
-                <Trash2 size={13} />
-              </button>
+              {!isCollapsed && (
+                <button style={trashButtonStyle} onClick={() => void handleDeleteChat(session.id)}>
+                  <Trash2 size={13} />
+                </button>
+              )}
             </div>
           ))}
         </div>
 
         <div style={sidebarFooterStyle}>
-          <button style={statusToggleStyle} onClick={() => setStatusOpen((open) => !open)}>
+          <button style={{ ...statusToggleStyle, justifyContent: isCollapsed ? "center" : "flex-start", padding: isCollapsed ? "14px 0" : "14px 16px" }} onClick={() => setStatusOpen((open) => !open)}>
             <div style={statusIndicatorWrapStyle(connected)}>
               <div style={statusDotStyle(connected)} />
             </div>
-            System Integrity
-            {statusOpen ? <ChevronDown size={14} style={{ marginLeft: "auto" }} /> : <ChevronRight size={14} style={{ marginLeft: "auto" }} />}
+            {!isCollapsed && "System Info"}
+            {!isCollapsed && (statusOpen ? <ChevronDown size={14} style={{ marginLeft: "auto" }} /> : <ChevronRight size={14} style={{ marginLeft: "auto" }} />)}
           </button>
           <AnimatePresence>
-            {statusOpen ? (
+            {statusOpen && !isCollapsed ? (
               <motion.div
                 initial={{ height: 0, opacity: 0 }}
                 animate={{ height: "auto", opacity: 1 }}
@@ -1144,7 +1214,7 @@ export default function App() {
           </div>
           <div style={connectionBadgeStyle(connected)}>
             {connected ? <Wifi size={14} /> : <WifiOff size={14} />}
-            {connected ? "Active Tunnel" : "Offline"}
+            {connected ? "Active" : "Offline"}
           </div>
         </header>
 
@@ -1202,7 +1272,7 @@ export default function App() {
                       </button>
                     </div>
                   ) : null}
-                  
+
                   <form
                     style={composerWrapStyle}
                     onSubmit={(event) => {
@@ -1269,63 +1339,102 @@ export default function App() {
               <aside style={detailsPanelStyle} className="hide-scrollbar">
                 <div style={detailsCardStyle}>
                   <div style={detailsHeaderWithToggle}>
-                    <div style={detailsTitleStyle}>Intelligence Trace</div>
+                    <div style={detailsTitleStyle}>Trace</div>
                     <div style={traceIndicatorWrap}>
                       <div style={traceDot} className="pulse" />
-                      Monitoring
+                      Reasoning
                     </div>
                   </div>
-                  
+
                   <AnimatePresence mode="wait">
-                     {lastRouting ? (
-                       <motion.div
-                          key="trace-content"
-                          initial={{ opacity: 0, height: 0 }}
-                          animate={{ opacity: 1, height: "auto" }}
-                          exit={{ opacity: 0, height: 0 }}
-                          style={{ overflow: "hidden" }}
-                       >
-                          <div style={traceSectionStyle}>
-                             <div style={detailsLabelStyle}>Intent Analysis</div>
-                             <div style={traceQueryStyle}>"{lastRouting.original_query}"</div>
-                          </div>
+                    {lastRouting ? (
+                      <motion.div
+                        key="trace-content"
+                        initial={{ opacity: 0, y: 8 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: 8 }}
+                      >
+                        <div style={tracePathOuterStyle}>
+                          <TracePathStep label="Analyze Intent" status="complete" icon={Sparkles} />
+                          <TracePathStep
+                            label={prettifyAgent(lastRouting.agent) ?? "Intelligent Routing"}
+                            status="complete"
+                            icon={Bot}
+                          />
+                          <TracePathStep
+                            label={lastRouting.action ?? "Executing Strategy"}
+                            status="complete"
+                            icon={Target}
+                          />
+                          <TracePathStep label="Final Briefing" status="current" icon={CheckCircle2} />
+                        </div>
 
-                          <div style={traceGrid}>
-                             <DetailRow label="Active Agent" value={prettifyAgent(lastRouting.agent) ?? "-"} highlight />
-                             <DetailRow label="Executed Action" value={lastRouting.action ?? "-"} highlight />
-                          </div>
-
-                          <div style={traceSectionStyle}>
-                             <div style={detailsLabelStyle}>Available Capabilities</div>
-                             <div style={toolsGridStyle}>
-                                {Object.entries(lastRouting.tool_descriptions ?? {}).map(([tool, description]) => (
-                                  <div key={tool} style={toolCardStyle}>
-                                    <div style={toolTitleStyle}>{tool}</div>
-                                    <div style={toolDescStyle}>{description}</div>
+                        {lastRouting.intent_reasoning && (
+                          <div style={{ marginTop: 20 }}>
+                            <div
+                              onClick={() => setTracingExtended(!tracingExtended)}
+                              style={traceToggleStyle}
+                            >
+                              <span>{tracingExtended ? "Collapse Reasoning" : "Deep-Dive Insights"}</span>
+                              <ChevronDown
+                                size={14}
+                                style={{
+                                  transform: tracingExtended ? "rotate(180deg)" : "none",
+                                  transition: "transform 0.2s",
+                                }}
+                              />
+                            </div>
+                            <AnimatePresence>
+                              {tracingExtended && (
+                                <motion.div
+                                  initial={{ height: 0, opacity: 0 }}
+                                  animate={{ height: "auto", opacity: 1 }}
+                                  exit={{ height: 0, opacity: 0 }}
+                                  style={{ overflow: "hidden" }}
+                                >
+                                  <div style={reasoningBoxStyle}>
+                                    <div style={reasoningLabelStyle}>Critical Path Analysis</div>
+                                    <div style={{ lineHeight: 1.6, fontSize: 12.5 }}>
+                                      {lastRouting.intent_reasoning}
+                                    </div>
                                   </div>
-                                ))}
-                             </div>
+                                </motion.div>
+                              )}
+                            </AnimatePresence>
                           </div>
-                       </motion.div>
-                     ) : (
-                       <motion.div
-                          key="trace-empty"
-                          initial={{ opacity: 0 }}
-                          animate={{ opacity: 1 }}
-                          style={emptyRoutingStyle}
-                       >
-                          Engage the core to see real-time routing logic here.
-                       </motion.div>
-                     )}
+                        )}
+
+                        <div style={{ marginTop: 24 }}>
+                          <div style={detailsLabelStyle}>Tactical Capabilities</div>
+                          <div style={toolsListStyle}>
+                            {Object.keys(lastRouting.tool_descriptions ?? {}).map((tool) => (
+                              <div key={tool} style={toolChipStyle}>
+                                <div style={toolDotStyle} />
+                                {tool}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </motion.div>
+                    ) : (
+                      <motion.div
+                        key="trace-empty"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        style={emptyRoutingStyle}
+                      >
+                        Engage the core to see real-time routing logic here.
+                      </motion.div>
+                    )}
                   </AnimatePresence>
                 </div>
 
                 <div style={helpCardStyle}>
-                   <div style={helpIconWrap}><Sparkles size={16} color="#1a73e8" /></div>
-                   <div>
-                      <div style={helpTitle}>Pro Tip</div>
-                      <div style={helpText}>Force routing using the [+] menu for precise cross-domain logic.</div>
-                   </div>
+                  <div style={helpIconWrap}><Sparkles size={16} color="#1a73e8" /></div>
+                  <div>
+                    <div style={helpTitle}>Pro Tip</div>
+                    <div style={helpText}>Force routing using the [+] menu for precise cross-domain logic.</div>
+                  </div>
                 </div>
               </aside>
             </div>
@@ -1360,7 +1469,7 @@ export default function App() {
                   </div>
                 </div>
                 <div style={modalPromptWrapStyle}>
-                   <pre style={modalPromptStyle}>{pendingApproval.prompt}</pre>
+                  <pre style={modalPromptStyle}>{pendingApproval.prompt}</pre>
                 </div>
                 <div style={modalActionsStyle}>
                   <button
@@ -1396,23 +1505,23 @@ export default function App() {
 function EmptyState({ suggestions, onPickSuggestion }: { suggestions: string[], onPickSuggestion: (text: string) => void }) {
   return (
     <div style={emptyStateWrapStyle}>
-      <motion.div 
+      <motion.div
         initial={{ scale: 0.9, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         style={emptyLogoWrap}
       >
         <Sparkles size={42} color="#1a73e8" />
       </motion.div>
-      <div style={emptyStateTitleStyle}>Intelligence Console</div>
-      <div style={emptyStateSubtitleStyle}>PilotH orchestrates complex cross-domain tasks using specialized agents.</div>
+      <div style={emptyStateTitleStyle}>Human CoPilot</div>
+      <div style={emptyStateSubtitleStyle}>It orchestrates complex cross-domain tasks using specialized agents.</div>
       <div style={suggestionsContainerStyle}>
         {suggestions.map((suggestion, i) => (
-          <motion.button 
+          <motion.button
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: i * 0.05 }}
-            key={suggestion} 
-            style={suggestionButtonStyle} 
+            key={suggestion}
+            style={suggestionButtonStyle}
             onClick={() => onPickSuggestion(suggestion)}
           >
             {suggestion}
@@ -1462,10 +1571,10 @@ function renderDashboard(
         <div style={contentCardStyle}>
           <div style={cardHeaderStyle}>Operational Node</div>
           <div style={systemOverviewGridStyle}>
-             <div style={statusGroup}>
-                <div style={statusLineLabelStyle}>Core Engine</div>
-                <div style={statusPill(true)}>Healthy</div>
-             </div>
+            <div style={statusGroup}>
+              <div style={statusLineLabelStyle}>Core Engine</div>
+              <div style={statusPill(true)}>Healthy</div>
+            </div>
             <StatusLine label="Endpoint" value={health?.status ?? "Verified"} />
             <StatusLine label="Core DB" value={health?.database ?? "Operational"} />
             <StatusLine label="Pilot Latency" value="12ms" />
@@ -1512,7 +1621,7 @@ function renderKnowledge(
           </span>
         </div>
         <p style={kbIntroText}>Augment core intelligence with unstructured context payloads.</p>
-        
+
         <label style={fieldLabelStyle}>Payload</label>
         <textarea
           value={kbText}
@@ -1617,29 +1726,29 @@ function MessageRow({ msg }: { msg: Message }) {
         <div style={messageSenderStyle(isUser, agentColor)}>
           {isUser ? "authorized operator" : (msg.agent ?? "intel engine")}
         </div>
-        
+
         <div style={messageBubbleStyle(isUser)}>
           <RichText text={stripAgentLabel(msg.text)} isUser={isUser} />
-          
+
           {isGenericMessage && detailedData && Object.keys(detailedData).length > 0 && (
-             <div style={dataPreviewStyle}>
-                <div style={dataHeader}>Results Payload</div>
-                <pre style={dataCodeStyle}>{JSON.stringify(detailedData, null, 2)}</pre>
-             </div>
+            <div style={dataPreviewStyle}>
+              <div style={dataHeader}>Results Payload</div>
+              <pre style={dataCodeStyle}>{JSON.stringify(detailedData, null, 2)}</pre>
+            </div>
           )}
 
-          {!isUser && msg.metadata && (msg.metadata.agent_description || msg.metadata.action_description) && (
+          {!isUser && msg.metadata && ((msg.metadata as any).agent_description || (msg.metadata as any).action_description) && (
             <div style={inlineRoutingStyle}>
               <div style={inlineRoutingHeader}>
                 <Target size={10} /> Intel Route
               </div>
               <div style={inlineRoutingText}>
-                {msg.metadata.agent_description as string} → {msg.metadata.action_description as string}
+                {String((msg.metadata as any).agent_description ?? "")} → {String((msg.metadata as any).action_description ?? "")}
               </div>
             </div>
           )}
         </div>
-        
+
         <div style={messageMetaStyle(isUser)}>
           {new Date(msg.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
           {isUser ? <StatusIcon status={msg.status ?? "delivered"} /> : null}
@@ -1673,6 +1782,21 @@ function DetailRow({ label, value, highlight = false }: { label: string; value: 
   );
 }
 
+function TracePathStep({ label, status, icon: Icon }: { label: string, status: "pending" | "current" | "complete" | "error", icon: any }) {
+  const isComplete = status === "complete";
+  const isCurrent = status === "current";
+
+  return (
+    <div style={tracePathStepStyle}>
+      <div style={tracePathLine(isComplete)} />
+      <div style={tracePathIconBox(isComplete, isCurrent)}>
+        <Icon size={12} color={isComplete || isCurrent ? "#1a73e8" : "#9aa0a6"} />
+      </div>
+      <div style={tracePathLabel(isComplete, isCurrent)}>{label}</div>
+    </div>
+  );
+}
+
 // ------------------------------------------------------------
 // STYLES – CONSTRAINED SCROLLING & PREMIUM LOOK
 // ------------------------------------------------------------
@@ -1682,8 +1806,8 @@ const appShellStyle: CSSProperties = {
   height: "100vh",
   width: "100vw",
   overflow: "hidden",
-  fontFamily: '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-  background: "#f8f9fa",
+  fontFamily: '"Inter", "Outfit", -apple-system, sans-serif',
+  background: "#ffffff",
   color: "#202124",
 };
 
@@ -1781,11 +1905,13 @@ const sessionsContainerStyle: CSSProperties = {
 
 const sectionLabelStyle: CSSProperties = {
   padding: "0 16px 12px",
-  fontSize: 11,
+  fontSize: 10,
   textTransform: "uppercase",
-  letterSpacing: "0.08em",
-  color: "#80868b",
-  fontWeight: 700,
+  letterSpacing: "0.1em",
+  color: "#9aa0a6",
+  fontWeight: 800,
+  borderBottom: "1px solid #f1f3f4",
+  margin: "0 8px 12px",
 };
 
 const sessionCardStyle: CSSProperties = {
@@ -2167,6 +2293,141 @@ const toolDescStyle: CSSProperties = {
   lineHeight: 1.4,
 };
 
+const routePillStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 8,
+  padding: "10px 14px",
+  borderRadius: 14,
+  background: "#f8f9fa",
+  border: "1px solid #f1f3f4",
+  marginBottom: 16,
+};
+
+const routeStepStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 8,
+  fontSize: 12,
+  fontWeight: 600,
+  color: "#3c4043",
+};
+
+const routeDot = (color: string): CSSProperties => ({
+  width: 6,
+  height: 6,
+  borderRadius: 99,
+  background: color,
+});
+
+const tracePathOuterStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: 0,
+  padding: "4px 0",
+};
+
+const tracePathStepStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 16,
+  position: "relative",
+  padding: "10px 0",
+};
+
+const tracePathLine = (complete: boolean): CSSProperties => ({
+  position: "absolute",
+  left: 13,
+  top: 30,
+  bottom: -10,
+  width: 2,
+  background: complete ? "#e8f0fe" : "#f1f3f4",
+  zIndex: 1,
+});
+
+const tracePathIconBox = (complete: boolean, current: boolean): CSSProperties => ({
+  width: 28,
+  height: 28,
+  borderRadius: 10,
+  background: current || complete ? "#e8f0fe" : "#f8f9fa",
+  border: `1px solid ${current || complete ? "#d2e3fc" : "#f1f3f4"}`,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  zIndex: 2,
+  boxShadow: current ? "0 0 0 4px rgba(26,115,232,0.1)" : "none",
+});
+
+const tracePathLabel = (complete: boolean, current: boolean): CSSProperties => ({
+  fontSize: 13,
+  fontWeight: current ? 700 : 500,
+  color: current ? "#1a73e8" : (complete ? "#3c4043" : "#9aa0a6"),
+});
+
+const traceToggleStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  padding: "12px 14px",
+  borderRadius: 12,
+  background: "#f8f9fa",
+  border: "1px solid #f1f3f4",
+  fontSize: 11,
+  fontWeight: 700,
+  color: "#1a73e8",
+  cursor: "pointer",
+  transition: "all 0.2s",
+  marginTop: 12,
+};
+
+const reasoningBoxStyle: CSSProperties = {
+  marginTop: 12,
+  padding: "16px",
+  borderRadius: 14,
+  background: "rgba(26,115,232,0.03)",
+  border: "1px solid rgba(26,115,232,0.08)",
+  color: "#3c4043",
+  boxShadow: "0 2px 8px rgba(0,0,0,0.02)",
+};
+
+const reasoningLabelStyle: CSSProperties = {
+  fontSize: 10,
+  textTransform: "uppercase",
+  letterSpacing: "0.08em",
+  fontWeight: 800,
+  color: "#1a73e8",
+  marginBottom: 10,
+  display: "block",
+};
+
+const toolsListStyle: CSSProperties = {
+  display: "flex",
+  flexWrap: "wrap",
+  gap: 6,
+};
+
+const toolChipStyle: CSSProperties = {
+  fontSize: 10,
+  fontWeight: 700,
+  padding: "6px 12px",
+  borderRadius: 10,
+  background: "#f0f4f8",
+  color: "#1a73e8",
+  textTransform: "uppercase",
+  letterSpacing: "0.04em",
+  display: "flex",
+  alignItems: "center",
+  border: "1px solid #e8f0fe",
+};
+
+const toolDotStyle: CSSProperties = {
+  width: 5,
+  height: 5,
+  borderRadius: 99,
+  background: "#1a73e8",
+  marginRight: 8,
+};
+
 const helpCardStyle: CSSProperties = {
   display: "flex",
   gap: 12,
@@ -2428,12 +2689,15 @@ const messageSenderStyle = (isUser: boolean, agentColor: string): CSSProperties 
 });
 
 const messageBubbleStyle = (isUser: boolean): CSSProperties => ({
-  borderRadius: isUser ? "20px 4px 20px 20px" : "4px 20px 20px 20px",
-  padding: "10px 14px",
-  background: isUser ? "#1a73e8" : "#f8f9fa",
+  borderRadius: isUser ? "24px 4px 24px 24px" : "4px 24px 24px 24px",
+  padding: "12px 18px",
+  background: isUser ? "linear-gradient(135deg, #1a73e8 0%, #1557b0 100%)" : "#ffffff",
   color: isUser ? "#ffffff" : "#202124",
-  boxShadow: isUser ? "0 4px 12px rgba(26,115,232,0.12)" : "none",
+  boxShadow: isUser ? "0 4px 14px rgba(26,115,232,0.18)" : "0 2px 10px rgba(0,0,0,0.03)",
   border: isUser ? "none" : "1px solid #f1f3f4",
+  position: "relative",
+  fontSize: 15,
+  lineHeight: 1.6,
 });
 
 const messageMetaStyle = (isUser: boolean): CSSProperties => ({
@@ -2587,9 +2851,8 @@ const alertCardStyle = (severity: AlertItem["severity"]): CSSProperties => ({
   borderRadius: 16,
   padding: 16,
   border: "1px solid #f1f3f4",
-  borderLeft: `4px solid ${
-    severity === "high" ? "#d93025" : severity === "medium" ? "#f9ab00" : "#1e8e3e"
-  }`,
+  borderLeft: `4px solid ${severity === "high" ? "#d93025" : severity === "medium" ? "#f9ab00" : "#1e8e3e"
+    }`,
   background: "#fafbfc",
   display: "grid",
   gap: 6,

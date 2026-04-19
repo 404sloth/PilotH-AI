@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import logging
 from typing import Dict, Optional
-
 from config.settings import Settings
 from agents.registry import ToolRegistry
 from human_loop.manager import HITLManager
@@ -52,9 +51,9 @@ def initialise_agents(config: Settings) -> Dict[str, object]:
 
     # ── Meetings & Communication Agent ───────────────────────
     try:
-        from agents.communication.agent import MeetingCommunicationAgent
+        from agents.communication.agent import CommunicationAgent
 
-        meeting_agent = MeetingCommunicationAgent(
+        meeting_agent = CommunicationAgent(
             config=config, tool_registry=registry, hitl_manager=hitl
         )
         _agents["meetings_communication"] = meeting_agent
@@ -64,6 +63,7 @@ def initialise_agents(config: Settings) -> Dict[str, object]:
 
     # ── Knowledge Base Agent ─────────────────────────────────
     try:
+        # Already imported at top level
         from agents.knowledge_base.agent import KnowledgeBaseAgent
 
         kb_agent = KnowledgeBaseAgent(

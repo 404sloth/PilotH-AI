@@ -22,6 +22,7 @@ class Session:
         self.messages: List[Dict[str, Any]] = []
         self.context: Dict[str, Any] = {}
         self.agent_state: Dict[str, Any] = {}
+        self.summary: Optional[str] = None
         self.created_at = time.time()
         self.last_active = time.time()
 
@@ -50,6 +51,7 @@ class Session:
         return {
             "session_id": self.session_id,
             "messages": self.messages[-20:],  # last 20 only for brevity
+            "summary": self.summary,
             "context": self.context,
             "created_at": self.created_at,
             "last_active": self.last_active,

@@ -38,7 +38,9 @@ def _safe_float(value: Any, default: float) -> float:
         return default
 
 
-def evaluate_node(state: VendorState) -> Dict[str, Any]:
+from langchain_core.runnables import RunnableConfig
+
+def evaluate_node(state: VendorState, config: RunnableConfig) -> Dict[str, Any]:
     """
     Evaluate a single vendor using LLM reasoning over real scorecard data.
     Skipped for FIND_BEST action (evaluation is embedded in VendorMatcherTool).
@@ -142,9 +144,9 @@ def evaluate_node(state: VendorState) -> Dict[str, Any]:
 
         span.add_event("evaluation_start", {"vendor_name": vendor_details.get("name")})
 
-        # Call LLM with sanitized data
+        # Call LLM with sanitized data and the passed config
         scores, strengths, weaknesses, overall = _evaluate_with_llm(
-            sanitized_context, vendor_details.get("name"), tracer, span
+            sanitized_context, vendor_details.get("name"), tracer, span, config
         )
 
         duration_ms = (time.time() - start_time) * 1000
@@ -230,6 +232,7 @@ def _evaluate_with_llm(
     vendor_name: str,
     tracer,
     parent_span,
+    config: RunnableConfig,
 ) -> tuple:
     """
     Call LLM to evaluate vendor using sanitized context and system prompts.
@@ -262,8 +265,8 @@ def _evaluate_with_llm(
             from orchestrator.system_prompts import AgentType, get_system_prompt
             system_msg = SystemMessage(content=get_system_prompt(AgentType.VENDOR_MANAGEMENT))
             
-            # Record LLM call
-            response = llm.invoke([system_msg, HumanMessage(content=prompt)])
+            # Record LLM call with config to propagate tracing
+            response = llm.invoke([system_msg, HumanMessage(content=prompt)], config=config)
             
             duration_ms = (time.time() - start_time) * 1000
             metrics.record_histogram(

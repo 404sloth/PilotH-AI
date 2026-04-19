@@ -15,7 +15,9 @@ from agents.vendor_management.schemas import VendorState
 logger = logging.getLogger(__name__)
 
 
-def risk_detect_node(state: VendorState) -> Dict[str, Any]:
+from langchain_core.runnables import RunnableConfig
+
+def risk_detect_node(state: VendorState, config: RunnableConfig) -> Dict[str, Any]:
     """
     Identify risks based on evaluation scores, SLA breaches, and milestone delays.
     Appends LLM-generated mitigation advice if an LLM is available.

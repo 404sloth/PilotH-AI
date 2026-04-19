@@ -10,6 +10,9 @@ from dotenv import load_dotenv
 
 # Ensure environment is loaded BEFORE any langchain/langsmith imports occur
 load_dotenv(override=True)
+# Initialize settings immediately to export LANGCHAIN_* environment variables
+from config.settings import Settings
+_global_settings = Settings()
 
 import asyncio
 import logging
@@ -17,8 +20,6 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-
-from config.settings import Settings
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(

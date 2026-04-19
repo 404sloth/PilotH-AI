@@ -9,6 +9,9 @@ import logging
 import uuid
 import json
 from typing import Any, Dict, Optional, List
+import os
+import re
+from langchain_core.runnables import RunnableConfig
 
 from config.settings import Settings
 from memory.session_store import get_session_store
@@ -69,6 +72,22 @@ class OrchestratorController:
             conversation = Conversation.create_new({"session_id": session_id})
             conversation_id = conversation.id
 
+        # ── 🔍 LangSmith Tracing Initialization ───────────────────────────────
+        callbacks = []
+        if os.getenv("LANGCHAIN_TRACING_V2") == "true" or self.config.langchain_tracing_v2:
+            try:
+                from langchain.callbacks.tracers.langsmith import LangSmithTracer
+                project = os.getenv("LANGCHAIN_PROJECT", "ai-agents-testing")
+                callbacks.append(LangSmithTracer(project_name=project))
+            except (ImportError, Exception):
+                pass
+
+        runnable_config = RunnableConfig(
+            callbacks=callbacks,
+            tags=["orchestrator", session_id],
+            metadata={"session_id": session_id, "conversation_id": conversation_id},
+        )
+
         otel_logger = get_logger("orchestrator")
 
         # Add user message to conversation
@@ -85,14 +104,28 @@ class OrchestratorController:
         safe_message = PIISanitizer.sanitize_string(message)
         session.add_message("user", message)
 
-        # 1. Parse intent with advanced parser
+        # 1. Parse intent with advanced parser (limit history to last 5 turns + summary)
+        history = session.get_conversation_history(last_n=20) 
+        
+        # If history is long, summarize older parts
+        if len(history) > 10:
+            session.summary = self._summarize_history(history[:-10], session.summary, config=runnable_config)
+            # Keep only the last 10 messages (5 turns)
+            trimmed_history = history[-10:]
+            # Inject summary as the "6th" conversation item
+            if session.summary:
+                trimmed_history.insert(0, {"role": "system", "content": f"Context Summary of older conversations: {session.summary}"})
+        else:
+            trimmed_history = history
+
         from orchestrator.intent_parser import IntentParser, get_tool_description, TOOL_REGISTRY
 
         intent = IntentParser(self.config).parse(
             message,
             context=PIISanitizer.sanitize_dict(runtime_context),
-            conversation_history=session.get_conversation_history() if hasattr(session, 'get_conversation_history') else None,
+            conversation_history=trimmed_history,
             agent_hint=agent_hint,
+            config=runnable_config,
         )
 
         otel_logger.info(
@@ -127,10 +160,11 @@ class OrchestratorController:
                 action=intent["action"],
                 payload={**intent.get("params", {}), **runtime_context},
                 session_id=session_id,
+                config=runnable_config,
             )
 
             # 3. Format and filter final output using LLM for intelligent layout
-            formatted_result = self._format_final_output_with_llm(result, intent, message)
+            formatted_result = self._format_final_output_with_llm(result, intent, message, config=runnable_config)
 
         # 4. Save to session and global memory
         assistant_response = formatted_result.get("response", "")
@@ -175,8 +209,34 @@ class OrchestratorController:
                 "params": intent.get("params", {}),
                 "confidence": intent.get("confidence"),
                 "token_usage": self.token_counter.totals(),
+                "suggestions": formatted_result.get("suggestions", []),
             }
         }
+
+    def _summarize_history(self, older_messages: List[Dict[str, Any]], existing_summary: Optional[str] = None, config: Optional[RunnableConfig] = None) -> str:
+        """Create a compact summary of older conversation history."""
+        from llm.model_factory import get_llm
+        from langchain_core.messages import HumanMessage
+        
+        if not older_messages:
+            return existing_summary or ""
+            
+        history_str = "\n".join([f"{msg['role']}: {msg['content']}" for msg in older_messages])
+        prompt = f"""Summarize the following conversation history into a single, highly compact paragraph. 
+Focus on key decisions, entities mentioned (vendors, project IDs), and active tasks.
+Keep it under 150 words.
+
+Existing Summary (to be merged): {existing_summary or "None"}
+New History:
+{history_str}
+"""
+        try:
+            llm = get_llm(temperature=0.2)
+            resp = llm.invoke([HumanMessage(content=prompt)], config=config)
+            return resp.content.strip()
+        except Exception as e:
+            logger.warning(f"Summarization failed: {e}")
+            return existing_summary or "Conversation in progress."
 
     def _generate_dynamic_help(self, user_query: str, registry: Dict[str, Any]) -> str:
         """Use LLM to generate a professional help message based on current registry."""
@@ -216,7 +276,7 @@ Guidelines:
         except Exception:
             return "I am PilotH. I can help with Vendor Management, Meeting Communication, and Knowledge Retrieval. How can I assist?"
 
-    def _format_final_output_with_llm(self, result: Dict[str, Any], intent: Dict[str, Any], original_query: str) -> Dict[str, Any]:
+    def _format_final_output_with_llm(self, result: Dict[str, Any], intent: Dict[str, Any], original_query: str, config: Optional[RunnableConfig] = None) -> Dict[str, Any]:
         """Use LLM to intelligently format the raw agent data into a professional enterprise layout."""
         from llm.model_factory import get_llm
         from langchain_core.messages import HumanMessage, SystemMessage
@@ -237,34 +297,68 @@ Guidelines:
             except Exception:
                 return str(obj)
                 
-        raw_payload = safe_serialize(clean_result)[:4000] # Slightly smaller to leave room for prompt instructions
+        raw_payload = safe_serialize(clean_result)[:2000] # Reduced to 2000 for token efficiency
+        if len(safe_serialize(clean_result)) > 2000:
+            raw_payload += "\n... [TRUNCATED]"
 
-        prompt = f"""You are a senior enterprise data strategist. Your goal is to transform raw system data into a beautiful, professional, and actionable response for the user.
-
-USER'S REQUEST: "{original_query}"
-INTELLIGENCE SOURCE: {agent} (Action: {action})
-
-RAW DATA PAYLOAD:
+        prompt = f"""You are a content formatter for PilotH.
+USER REQUEST: "{original_query}"
+INTELLIGENCE: {agent} / {action}
+DATA:
 {raw_payload}
 
 INSTRUCTIONS:
-1. STRUCTURE: Use clear headings (##) and sub-headings (###) to organize information.
-2. TABLES: If the data contains lists of items (vendors, meetings, metrics), ALWAYS present them in a clean Markdown Table format extracting all relevant data from the objects.
-   - Example: | Name | Status | Expiry |
-              |------|--------|--------|
-3. BULLETS: Use bullet points for key findings, risks, or recommendations.
-4. TYPOGRAPHY: Use **bold** for emphasis and `code` for IDs or specific references.
-5. EXPLANATION: After presenting data/tables, provide a concise "Executive Analysis" explaining what the data means for the user.
-6. RESPOND DIRECTLY: Do not print 'Here is the data' or 'Based on the payload'. Just give the final formatted response.
-7. NO PLACEHOLDERS: Do NOT say 'See details below'. You are the detail. Present everything here.
-8. PROFESSIONALISM: Maintain a premium, high-trust enterprise tone.
-
-If no relevant data was found, provide a professional explanation of what was searched and suggest specific alternative queries.
+1. STRUCTURE: Use clear, hierarchical headings (##) and sub-headings (###). **DO NOT use '=====' or '-------' lines.**
+2. TABLES: If the data contains lists of items (vendors, meetings, metrics, persons), ALWAYS present them in a clean, high-density Markdown Table format.
+   - Extract at least 4-5 relevant columns for each row.
+3. BULLETS: Use bullet points for key findings or risks. 
+4. TYPOGRAPHY: Use **bold** for names and `code` for IDs.
+5. EXECUTIVE SUMMARY: Start with a 1-2 sentence high-level summary.
+6. SUGGESTIONS: Provide exactly 3 short follow-up suggestions.
+   - Format: [SUGGESTIONS] ["S1", "S2", "S3"] [/SUGGESTIONS] (Always at the absolute bottom).
+7. DATA INTEGRITY: Never show 'null' or 'None'. Use 'N/A' or 'Requested' for missing metrics.
+8. BRANDING: Refer to yourself as 'Human CoPilot' if needed.
+9. NO DECORATIONS: DO NOT use '====' or '----' or '____' lines as separators. Use sub-headings instead.
 """
+
         try:
-            llm = get_llm(temperature=0.1)  # Low temp for precise formatting
-            resp = llm.invoke([HumanMessage(content=prompt)])
-            return {"response": resp.content.strip(), "data": result}
+            llm = get_llm(temperature=0.1)
+            resp = llm.invoke([HumanMessage(content=prompt)], config=config)
+            
+            content = resp.content.strip()
+            
+            # Post-process to remove unwanted lines/artifacts
+            lines = content.split("\n")
+            cleaned_lines = []
+            for line in lines:
+                # Remove common separators generated by LLMs
+                if re.match(r"^[-=_*]{3,}$", line.strip()):
+                    continue
+                cleaned_lines.append(line)
+            content = "\n".join(cleaned_lines).strip()
+
+            suggestions = []
+            
+            # Extract suggestions from the special block
+            match = re.search(r"\[SUGGESTIONS\](.*?)(?:\[/SUGGESTIONS\]|$)", content, re.DOTALL)
+            if match:
+                try:
+                    # Clean the JSON string before loading
+                    clean_json = match.group(1).strip()
+                    if clean_json.startswith("```json"): clean_json = clean_json[7:-3].strip()
+                    elif clean_json.startswith("```"): clean_json = clean_json[3:-3].strip()
+                    
+                    suggestions = json.loads(clean_json)
+                    content = content[:match.start()].strip() + "\n" + content[match.end():].strip()
+                    content = content.replace("[/SUGGESTIONS]", "").strip()
+                except Exception: 
+                    # Fallback match if JSON load fails
+                    inner = match.group(1).replace('"', '').replace('[', '').replace(']', '').split(',')
+                    suggestions = [s.strip() for s in inner if s.strip()]
+                    content = content.replace(match.group(0), "").strip()
+                    content = content.replace("[/SUGGESTIONS]", "").strip()
+                
+            return {"response": content, "data": result, "suggestions": suggestions}
         except Exception as e:
             logger.warning(f"Formatting LLM failed: {e}. Falling back to manual formatting.")
             return self._manual_fallback_formatter(result, intent, original_query)

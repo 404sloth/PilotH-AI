@@ -11,6 +11,7 @@ from pydantic import BaseModel
 from agents.base_agent import BaseAgent
 from config.settings import Settings
 from human_loop.manager import HITLManager
+from langchain_core.runnables import RunnableConfig
 
 
 class KnowledgeBaseInput(BaseModel):
@@ -65,7 +66,7 @@ class KnowledgeBaseAgent(BaseAgent):
         # Simple agent - no complex graph needed
         return None
 
-    def execute(self, input_data: Dict[str, Any]) -> Dict[str, Any]:
+    def execute(self, input_data: Dict[str, Any], config: Optional[RunnableConfig] = None) -> Dict[str, Any]:
         """
         Execute knowledge base search.
         """

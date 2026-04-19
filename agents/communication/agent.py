@@ -6,13 +6,14 @@ from __future__ import annotations
 
 from typing import Any, Dict, Optional, Type
 from pydantic import BaseModel
+from langchain_core.runnables import RunnableConfig
 
 from agents.base_agent import BaseAgent
 from config.settings import Settings
 from human_loop.manager import HITLManager
 
-from .schemas import CommunicationInput, CommunicationOutput
-from .graph import build_communication_graph
+from .schemas import MeetingRequestInput, MeetingAgentOutput
+from .graph import build_meeting_graph
 from .tools import (
     GoogleCalendarCreateTool,
     GoogleCalendarAvailabilityTool,
@@ -27,6 +28,9 @@ from .tools import (
     ConflictResolverTool,
     MeetingSearchTool,
 )
+from .tools.stakeholder_echo import StakeholderEchoTool
+from tools.data_tools.sql_executor import DynamicSQLExecutorTool
+
 
 
 class CommunicationAgent(BaseAgent):
@@ -62,7 +66,10 @@ class CommunicationAgent(BaseAgent):
             ActionItemTrackerTool(),
             ConflictResolverTool(),
             MeetingSearchTool(),
+            StakeholderEchoTool(),
+            DynamicSQLExecutorTool(),
         ]:
+
             self.tool_registry.register_tool(tool, self.name)
 
     @property
@@ -80,11 +87,11 @@ class CommunicationAgent(BaseAgent):
             hitl_manager=self.hitl,
         )
 
-    def execute(self, input_data: Dict[str, Any]) -> Dict[str, Any]:
+    def execute(self, input_data: Dict[str, Any], config: Optional[RunnableConfig] = None) -> Dict[str, Any]:
         """
         Execute the agent workflow.
         """
-        validated_input = CommunicationInput(**input_data)
+        validated_input = MeetingRequestInput(**input_data)
         
         # Build initial state
         state = {
@@ -94,7 +101,8 @@ class CommunicationAgent(BaseAgent):
         }
 
         graph = self.get_subgraph()
-        result = graph.invoke(state)
+        # Pass the config to propagate tracing callbacks
+        result = graph.invoke(state, config=config)
 
         # Convert result to output schema
         output = {

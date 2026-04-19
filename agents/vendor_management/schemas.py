@@ -71,6 +71,9 @@ class VendorManagementInput(BaseModel):
     budget_monthly: Optional[float] = Field(
         None, description="Max monthly budget in USD"
     )
+    category: Optional[str] = Field(
+        None, description="Category filter (e.g. IT Services, Logistics)"
+    )
     min_quality_score: float = Field(75.0, ge=0, le=100)
     min_on_time_rate: float = Field(0.85, ge=0, le=1.0)
     tier: Optional[str] = Field(

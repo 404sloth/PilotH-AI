@@ -42,7 +42,7 @@ class MeetingSummarizerTool(StructuredTool):
     )
     args_schema: type[BaseModel] = SummarizerInput
 
-    def execute(self, inp: SummarizerInput) -> SummarizerOutput:
+    def execute(self, inp: SummarizerInput, config: Optional[RunnableConfig] = None) -> SummarizerOutput:
         from orchestrator.system_prompts import get_prompt, AgentType, get_system_prompt
         from observability.pii_sanitizer import PIISanitizer
         
@@ -65,7 +65,8 @@ class MeetingSummarizerTool(StructuredTool):
             # Add system context
             system_msg = SystemMessage(content=get_system_prompt(AgentType.COMMUNICATION))
             
-            resp = llm.invoke([system_msg, HumanMessage(content=prompt)]).content.strip()
+            # Pass config to ensure tracing is maintained
+            resp = llm.invoke([system_msg, HumanMessage(content=prompt)], config=config).content.strip()
             resp = resp.strip("```json").strip("```").strip()
             data = json.loads(resp)
             return SummarizerOutput(

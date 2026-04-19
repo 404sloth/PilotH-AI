@@ -12,11 +12,12 @@ from typing import Any, Dict
 from langchain_core.messages import ToolMessage
 
 from agents.vendor_management.schemas import VendorState
+from langchain_core.runnables import RunnableConfig
 
 logger = logging.getLogger(__name__)
 
 
-def fetch_vendor_node(state: VendorState) -> Dict[str, Any]:
+def fetch_vendor_node(state: VendorState, config: RunnableConfig) -> Dict[str, Any]:
     """
     Resolve vendor data based on the requested action.
     Populates vendor_records (FIND_BEST) or vendor_details (all other actions).
@@ -24,14 +25,14 @@ def fetch_vendor_node(state: VendorState) -> Dict[str, Any]:
     action = state.get("action", "full_assessment")
 
     if action == "search_vendors":
-        return _run_vendor_discovery(state)
+        return _run_vendor_discovery(state, config)
     if action == "find_best":
-        return _run_matcher(state)
+        return _run_matcher(state, config)
     else:
-        return _run_search(state)
+        return _run_search(state, config)
 
 
-def _run_vendor_discovery(state: VendorState) -> Dict[str, Any]:
+def _run_vendor_discovery(state: VendorState, config: RunnableConfig) -> Dict[str, Any]:
     from agents.vendor_management.tools.vendor_search import (
         VendorSearchInput,
         VendorSearchTool,
@@ -86,7 +87,7 @@ def _run_vendor_discovery(state: VendorState) -> Dict[str, Any]:
     }
 
 
-def _run_matcher(state: VendorState) -> Dict[str, Any]:
+def _run_matcher(state: VendorState, config: RunnableConfig) -> Dict[str, Any]:
     from agents.vendor_management.tools.vendor_matcher import (
         VendorMatcherTool,
         VendorMatcherInput,
@@ -146,7 +147,7 @@ def _run_matcher(state: VendorState) -> Dict[str, Any]:
     }
 
 
-def _run_search(state: VendorState) -> Dict[str, Any]:
+def _run_search(state: VendorState, config: RunnableConfig) -> Dict[str, Any]:
     from agents.vendor_management.tools.vendor_search import (
         VendorSearchTool,
         VendorSearchInput,

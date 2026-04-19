@@ -5,12 +5,9 @@ Vendor Management Agent — orchestrates the full LangGraph workflow.
 from __future__ import annotations
 
 from typing import Any, Dict, Optional, Type
-
 from pydantic import BaseModel
-
+from langchain_core.runnables import RunnableConfig
 from agents.base_agent import BaseAgent
-from config.settings import Settings
-from human_loop.manager import HITLManager
 
 from .schemas import VendorManagementInput, VendorManagementOutput, VendorState
 from .graph import build_vendor_graph
@@ -28,6 +25,11 @@ from .tools.financial_analyzer import VendorFinancialTool
 from .tools.kb_search import KnowledgeBaseSearchTool
 
 from .tools.gap_analyzer import GapAnalyzerTool
+from .tools.risk_sentinel import RiskSentinelTool
+from .tools.financial_health import FinancialHealthTool
+from .tools.performance_predictor import PerformancePredictorTool
+from tools.data_tools.sql_executor import DynamicSQLExecutorTool
+
 
 class VendorManagementAgent(BaseAgent):
     """
@@ -70,7 +72,12 @@ class VendorManagementAgent(BaseAgent):
             VendorFinancialTool(),
             KnowledgeBaseSearchTool(),
             GapAnalyzerTool(),
+            RiskSentinelTool(),
+            FinancialHealthTool(),
+            PerformancePredictorTool(),
+            DynamicSQLExecutorTool(),
         ]:
+
             self.tool_registry.register_tool(tool, self.name)
 
     # ------------------------------------------------------------------
@@ -97,15 +104,13 @@ class VendorManagementAgent(BaseAgent):
     # ------------------------------------------------------------------
     # Execute
     # ------------------------------------------------------------------
-    def execute(self, input_data: Dict[str, Any]) -> Dict[str, Any]:
+    def execute(self, input_data: Dict[str, Any], config: Optional[RunnableConfig] = None) -> Dict[str, Any]:
         """
         Run the vendor management workflow with full Pydantic validation.
 
         Args:
             input_data: Raw dict matching VendorManagementInput schema
-
-        Returns:
-            Validated dict matching VendorManagementOutput schema
+            config: Optional LangChain execution config for tracing
         """
         validated_in = VendorManagementInput(**input_data)
 
@@ -116,10 +121,11 @@ class VendorManagementAgent(BaseAgent):
             "vendor_id": validated_in.vendor_id,
             "service_required": validated_in.service_required,
             "industry": validated_in.industry,
+            "category": getattr(validated_in, "category", None),  # Ensure category is passed if present
             "budget_monthly": validated_in.budget_monthly,
             "min_quality_score": validated_in.min_quality_score,
             "min_on_time_rate": validated_in.min_on_time_rate,
-            "required_tier": validated_in.required_tier,
+            "tier": validated_in.tier,
             "country": validated_in.country,
             "client_project_id": validated_in.client_project_id,
             "top_n": validated_in.top_n,
@@ -129,7 +135,8 @@ class VendorManagementAgent(BaseAgent):
         }
 
         graph = self.get_subgraph()
-        result: VendorState = graph.invoke(state_input)
+        # Pass the config to propagate tracing callbacks
+        result: VendorState = graph.invoke(state_input, config=config)
 
         # Map result → output schema
         output_data: Dict[str, Any] = {

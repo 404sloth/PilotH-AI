@@ -11,12 +11,13 @@ import logging
 from typing import Any, Dict
 
 from langchain_core.messages import HumanMessage, AIMessage
+from langchain_core.runnables import RunnableConfig
 from agents.vendor_management.schemas import VendorState
 
 logger = logging.getLogger(__name__)
 
 
-def summarize_node(state: VendorState) -> Dict[str, Any]:
+def summarize_node(state: VendorState, config: RunnableConfig) -> Dict[str, Any]:
     """
     Generate LLM-powered executive summary and prioritised recommendations.
     Falls back to rule-based summary if LLM unavailable.
@@ -24,19 +25,19 @@ def summarize_node(state: VendorState) -> Dict[str, Any]:
     action = state.get("action", "full_assessment")
 
     if action == "search_vendors":
-        return _summarize_vendor_search(state)
+        return _summarize_vendor_search(state, config)
     if action == "find_best":
-        return _summarize_find_best(state)
+        return _summarize_find_best(state, config)
     if action == "summarize_contract":
-        return _summarize_contract(state)
+        return _summarize_contract(state, config)
     else:
-        return _summarize_assessment(state)
+        return _summarize_assessment(state, config)
 
 
 # ---------------------------------------------------------------------------
 # SEARCH_VENDORS summary
 ...
-def _summarize_contract(state: VendorState) -> Dict[str, Any]:
+def _summarize_contract(state: VendorState, config: RunnableConfig) -> Dict[str, Any]:
     contract = state.get("contract_data") or {}
     vendor_name = state.get("vendor_name") or "the vendor"
 
@@ -63,7 +64,7 @@ Contract Data:
 
 Provide a 3-4 sentence professional summary focusing on the status (active/expiring), key terms, and any upcoming milestones or renewals."""
 
-    summary = _call_llm(prompt) or f"Contract {context['ref']} for {vendor_name} is active until {context['expiry']}. Total value is {context['value']}."
+    summary = _call_llm(prompt, config) or f"Contract {context['ref']} for {vendor_name} is active until {context['expiry']}. Total value is {context['value']}."
 
     return {
         "llm_summary": summary,
@@ -72,7 +73,7 @@ Provide a 3-4 sentence professional summary focusing on the status (active/expir
 # ---------------------------------------------------------------------------
 
 
-def _summarize_vendor_search(state: VendorState) -> Dict[str, Any]:
+def _summarize_vendor_search(state: VendorState, config: RunnableConfig) -> Dict[str, Any]:
     vendors = state.get("vendors") or []
     service_filter = state.get("service_required")
     industry_filter = state.get("industry")
@@ -111,7 +112,7 @@ Vendor List:
 
 Provide a helpful 2-3 sentence summary of what was found. List the names of the top 5 vendors explicitly."""
 
-    summary = _call_llm(prompt) or _fallback_vendor_search(vendors, service_filter, industry_filter, country)
+    summary = _call_llm(prompt, config) or _fallback_vendor_search(vendors, service_filter, industry_filter, country)
 
     return {
         "llm_summary": summary,
@@ -139,7 +140,7 @@ def _fallback_vendor_search(vendors: list, service: str, industry: str, country:
 # ---------------------------------------------------------------------------
 
 
-def _summarize_find_best(state: VendorState) -> Dict[str, Any]:
+def _summarize_find_best(state: VendorState, config: RunnableConfig) -> Dict[str, Any]:
     ranked = state.get("ranked_vendors") or []
     service = state.get("service_required", "requested service")
 
@@ -166,7 +167,7 @@ Filters applied: Tier: {state.get('tier') or 'Any'}, Status: {state.get('contrac
 Explain why they are better than the runner-ups based on the data provided.
 Include a Markdown table comparing the top 3 vendors, showing columns for Vendor, Cost, SLA Score, Reliability, and Fit Score."""
 
-    summary = _call_llm(prompt) or _fallback_find_best(top, ranked, service)
+    summary = _call_llm(prompt, config) or _fallback_find_best(top, ranked, service)
 
     return {
         "llm_summary": summary,
@@ -191,7 +192,7 @@ def _fallback_find_best(top: Dict, ranked: list, service: str) -> str:
 # ---------------------------------------------------------------------------
 
 
-def _summarize_assessment(state: VendorState) -> Dict[str, Any]:
+def _summarize_assessment(state: VendorState, config: RunnableConfig) -> Dict[str, Any]:
     if state.get("error"):
         return {
             "llm_summary": f"Assessment failed: {state['error']}",
@@ -230,7 +231,7 @@ Start by stating the overall score of {overall:.1f}/100.
 Mention specific strengths ({', '.join(strengths[:2])}) and concerns ({', '.join(weaknesses[:2])}).
 If SLA compliance is mentioned ({sla_pct}%), include it."""
 
-    summary = _call_llm(prompt) or _fallback_assessment(context)
+    summary = _call_llm(prompt, config) or _fallback_assessment(context)
 
     return {
         "llm_summary": summary,
@@ -253,12 +254,12 @@ def _fallback_assessment(ctx: Dict) -> str:
 # ---------------------------------------------------------------------------
 
 
-def _call_llm(prompt: str) -> str | None:
+def _call_llm(prompt: str, config: RunnableConfig) -> str | None:
     try:
         from llm.model_factory import get_llm
 
         llm = get_llm(temperature=0.4)
-        response = llm.invoke([HumanMessage(content=prompt)])
+        response = llm.invoke([HumanMessage(content=prompt)], config=config)
         return response.content.strip()
     except Exception as e:
         logger.warning("LLM call failed in summarize_node: %s", e)

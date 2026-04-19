@@ -141,270 +141,59 @@ def seed_meeting_data() -> None:
             return  # already seeded
 
         persons = [
-            (
-                "P-001",
-                "Anil Yadav",
-                "anil.yadav@company.com",
-                "Engineering",
-                "PilotH",
-                "CTO",
-                "Mumbai",
-                "Asia/Kolkata",
-                None,
-                "+91-98765-00001",
-                "@anil",
-                "Chief Technology Officer leading the AI platform team.",
-            ),
-            (
-                "P-002",
-                "Priya Sharma",
-                "priya.sharma@company.com",
-                "Product",
-                "PilotH",
-                "Product Manager",
-                "Mumbai",
-                "Asia/Kolkata",
-                "P-001",
-                "+91-98765-00002",
-                "@priya",
-                "PM driving PilotH roadmap and stakeholder management.",
-            ),
-            (
-                "P-003",
-                "James Carter",
-                "james.carter@company.com",
-                "Engineering",
-                "PilotH",
-                "Senior Engineer",
-                "New York",
-                "America/New_York",
-                "P-001",
-                "+1-212-555-0003",
-                "@james",
-                "Backend engineer specialising in LangGraph orchestration.",
-            ),
-            (
-                "P-004",
-                "Mei Lin",
-                "mei.lin@company.com",
-                "Data Science",
-                "Analytics",
-                "Data Scientist",
-                "Singapore",
-                "Asia/Singapore",
-                "P-001",
-                "+65-9000-0004",
-                "@mei",
-                "Data scientist working on predictive analytics models.",
-            ),
-            (
-                "P-005",
-                "Anil Kumar",
-                "anil.kumar@company.com",
-                "Finance",
-                "Budget",
-                "Financial Analyst",
-                "Delhi",
-                "Asia/Kolkata",
-                None,
-                "+91-98765-00005",
-                "@anilk",
-                "Financial analyst — different person from Anil Yadav CTO.",
-            ),
-            (
-                "P-006",
-                "Sofia Martinez",
-                "sofia.martinez@company.com",
-                "Marketing",
-                "Growth",
-                "Marketing Lead",
-                "London",
-                "Europe/London",
-                None,
-                "+44-20-0006",
-                "@sofia",
-                "Marketing lead overseeing growth campaigns.",
-            ),
-            (
-                "P-007",
-                "David Kim",
-                "david.kim@company.com",
-                "Engineering",
-                "PilotH",
-                "DevOps Engineer",
-                "Seoul",
-                "Asia/Seoul",
-                "P-001",
-                "+82-10-0007",
-                "@david",
-                "DevOps engineer managing CI/CD and infrastructure.",
-            ),
-            (
-                "P-008",
-                "Rachel Green",
-                "rachel.green@company.com",
-                "Legal",
-                "Compliance",
-                "Legal Counsel",
-                "New York",
-                "America/New_York",
-                "P-001",
-                "+1-212-555-0008",
-                "@rachel",
-                "Legal counsel overseeing compliance and contracts.",
-            ),
+            ("P-001", "Anil Yadav", "anil.yadav@company.com", "Engineering", "PilotH", "CTO", "Mumbai", "Asia/Kolkata", None, "+91-98765-00001", "@anil", "Chief Technology Officer leading the AI platform team."),
+            ("P-002", "Priya Sharma", "priya.sharma@company.com", "Product", "PilotH", "Product Manager", "Mumbai", "Asia/Kolkata", "P-001", "+91-98765-00002", "@priya", "PM driving PilotH roadmap."),
+            ("P-003", "James Carter", "james.carter@company.com", "Engineering", "PilotH", "Senior Engineer", "New York", "America/New_York", "P-001", "+1-212-555-0003", "@james", "Backend/LangGraph specialist."),
+            ("P-004", "Mei Lin", "mei.lin@company.com", "Data Science", "Analytics", "Data Scientist", "Singapore", "Asia/Singapore", "P-001", "+65-9000-0004", "@mei", "Analytics and modeling."),
+            ("P-005", "Sarah Jenkins", "sarah.j@company.com", "Finance", "Strategy", "CFO", "London", "Europe/London", None, "+44-7700-900", "@sarah", "Chief Financial Officer overseeing budgets."),
+            ("P-006", "David Miller", "david.m@company.com", "Legal", "Compliance", "General Counsel", "New York", "America/New_York", "P-001", "+1-212-555-0006", "@david", "Legal risk management."),
+            ("P-007", "Rajesh Gupta", "rajesh.g@company.com", "Engineering", "PilotH", "DevOps Lead", "Bangalore", "Asia/Kolkata", "P-003", "+91-80-0007", "@rajesh", "Infrastructure and CI/CD."),
+            ("P-008", "Emma Watson", "emma.w@company.com", "Marketing", "Growth", "CMO", "London", "Europe/London", None, "+44-7700-908", "@emma", "Chief Marketing Officer."),
+            ("P-009", "Hiroshi Sato", "hiroshi.s@company.com", "Procurement", "Global Ops", "Director", "Tokyo", "Asia/Tokyo", "P-005", "+81-3-0009", "@hiroshi", "Global vendor relations."),
+            ("P-010", "Chloe Dubois", "chloe.d@company.com", "HR", "People", "Director", "Paris", "Europe/Paris", None, "+33-1-0010", "@chloe", "People Ops and Culture."),
         ]
         cur.executemany(
-            "INSERT OR IGNORE INTO persons(id,full_name,email,department,project,role,location,timezone,manager_id,phone,slack_handle,bio) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
-            persons,
+            "INSERT OR IGNORE INTO persons(id,full_name,email,department,project,role,location,timezone,manager_id,phone,slack_handle,bio) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)", 
+            persons
         )
 
+        # Skills
         skills = [
-            ("P-001", "Python"),
-            ("P-001", "LLM Engineering"),
-            ("P-001", "System Architecture"),
-            ("P-002", "Product Strategy"),
-            ("P-002", "Agile"),
-            ("P-002", "Stakeholder Management"),
-            ("P-003", "Python"),
-            ("P-003", "LangGraph"),
-            ("P-003", "FastAPI"),
-            ("P-004", "ML"),
-            ("P-004", "Python"),
-            ("P-004", "Tableau"),
-            ("P-005", "Financial Modelling"),
-            ("P-005", "Excel"),
-            ("P-005", "SQL"),
-            ("P-006", "SEO"),
-            ("P-006", "Content Marketing"),
-            ("P-006", "Analytics"),
-            ("P-007", "Kubernetes"),
-            ("P-007", "Terraform"),
-            ("P-007", "GitHub Actions"),
-            ("P-008", "Contract Law"),
-            ("P-008", "GDPR"),
-            ("P-008", "Risk Management"),
+            ("P-001", "Python"), ("P-001", "LLM Engineering"),
+            ("P-003", "LangGraph"), ("P-005", "Financial Modelling"),
+            ("P-007", "Kubernetes"), ("P-008", "Growth Marketing")
         ]
-        cur.executemany(
-            "INSERT OR IGNORE INTO person_skills(person_id, skill) VALUES(?,?)", skills
-        )
+        cur.executemany("INSERT OR IGNORE INTO person_skills(person_id, skill) VALUES(?,?)", skills)
 
-        # Calendar events (busy blocks)
-        now = datetime.utcnow()
-        events = [
-            (
-                "P-001",
-                None,
-                "Team Standup",
-                (now + timedelta(hours=2)).isoformat(),
-                (now + timedelta(hours=2, minutes=30)).isoformat(),
-                "Asia/Kolkata",
-                1,
-            ),
-            (
-                "P-001",
-                None,
-                "Board Review",
-                (now + timedelta(hours=5)).isoformat(),
-                (now + timedelta(hours=7)).isoformat(),
-                "Asia/Kolkata",
-                1,
-            ),
-            (
-                "P-002",
-                None,
-                "Sprint Planning",
-                (now + timedelta(hours=1)).isoformat(),
-                (now + timedelta(hours=3)).isoformat(),
-                "Asia/Kolkata",
-                1,
-            ),
-            (
-                "P-003",
-                None,
-                "Client Call",
-                (now + timedelta(hours=3)).isoformat(),
-                (now + timedelta(hours=4)).isoformat(),
-                "America/New_York",
-                1,
-            ),
-            (
-                "P-004",
-                None,
-                "Data Review",
-                (now + timedelta(hours=6)).isoformat(),
-                (now + timedelta(hours=7)).isoformat(),
-                "Asia/Singapore",
-                1,
-            ),
+        # Communications
+        comms = [
+            ("P-001", "P-005", "email", "Q3 Budget Review", "We need to finalize the vendor consolidation project by end of month.", 0.2, "neutral"),
+            ("P-005", "P-001", "slack", "Budget Alert", "Anil, the AWS spend is 20% over projection. We need to investigate the Managed Kubernetes scaling.", -0.4, "negative"),
+            ("P-009", "P-001", "email", "Vendor Risk: Vertex Analytics", "Vertex (V-007) is reporting a major security patch delay. I recommend putting their trial migration on hold.", -0.6, "negative"),
+            ("P-002", "P-001", "slack", "User Feedback", "The new collapsible sidebar is getting great feedback from the executive team!", 0.9, "positive"),
+            ("P-010", "P-001", "slack", "Team Sentiment", "Team morale is high following the PilotH rollout. Great work on transparency.", 0.8, "positive"),
         ]
-        cur.executemany(
-            "INSERT OR IGNORE INTO calendar_events(person_id, external_id, title, start_time, end_time, timezone, is_blocked) VALUES(?,?,?,?,?,?,?)",
-            events,
-        )
+        
+        # Scale up communications for executive analysis
+        for i in range(40):
+            sender = "P-001" if i % 2 == 0 else "P-003"
+            recipient = "P-003" if i % 2 == 0 else "P-001"
+            comms.append((
+                sender, recipient, "slack", 
+                f"Sync Thread {i//10}", 
+                f"Analyzing requirement {i} for the new enterprise module. Context: {['low', 'medium', 'high'][i % 3]} priority.",
+                0.1, "neutral"
+            ))
+            
+        cur.executemany("INSERT INTO communications(sender_id, recipient_id, channel, subject, content, sentiment_score, sentiment_label) VALUES(?,?,?,?,?,?,?)", comms)
 
-        # Sample meeting
+        # Meetings
         cur.execute(
             "INSERT OR IGNORE INTO meetings(id, title, organizer_id, duration_mins, timezone, status, meeting_type) VALUES(?,?,?,?,?,?,?)",
-            (
-                "MTG-001",
-                "PilotH Architecture Review",
-                "P-001",
-                60,
-                "Asia/Kolkata",
-                "completed",
-                "internal",
-            ),
+            ("MTG-001", "PilotH Architecture Review", "P-001", 60, "Asia/Kolkata", "completed", "internal")
         )
-        attendees = [
-            ("MTG-001", "P-001", "organizer", "accepted"),
-            ("MTG-001", "P-002", "attendee", "accepted"),
-            ("MTG-001", "P-003", "presenter", "accepted"),
-            ("MTG-001", "P-007", "attendee", "accepted"),
-        ]
-        cur.executemany(
-            "INSERT OR IGNORE INTO meeting_attendees(meeting_id,person_id,role,rsvp) VALUES(?,?,?,?)",
-            attendees,
-        )
-
-        agenda = [
-            ("MTG-001", "LangGraph Workflow Design", 15, "P-003", 1),
-            ("MTG-001", "Vector Memory Integration", 15, "P-004", 2),
-            ("MTG-001", "DevOps Pipeline Review", 15, "P-007", 3),
-            ("MTG-001", "Open Q&A and Next Steps", 15, "P-001", 4),
-        ]
-        cur.executemany(
-            "INSERT OR IGNORE INTO meeting_agendas(meeting_id,topic,duration_mins,presenter_id,agenda_order) VALUES(?,?,?,?,?)",
-            agenda,
-        )
-
-        action_items = [
-            (
-                "MTG-001",
-                "P-003",
-                "Implement parallel graph execution",
-                (now + timedelta(days=5)).date().isoformat(),
-                "high",
-            ),
-            (
-                "MTG-001",
-                "P-007",
-                "Setup monitoring stack with Grafana",
-                (now + timedelta(days=7)).date().isoformat(),
-                "medium",
-            ),
-            (
-                "MTG-001",
-                "P-001",
-                "Finalise architecture decision record",
-                (now + timedelta(days=3)).date().isoformat(),
-                "high",
-            ),
-        ]
-        cur.executemany(
-            "INSERT OR IGNORE INTO meeting_action_items(meeting_id,assignee_id,description,due_date,priority) VALUES(?,?,?,?,?)",
-            action_items,
-        )
+        attendees = [("MTG-001", "P-001", "organizer", "accepted"), ("MTG-001", "P-002", "attendee", "accepted")]
+        cur.executemany("INSERT OR IGNORE INTO meeting_attendees(meeting_id,person_id,role,rsvp) VALUES(?,?,?,?)", attendees)
 
         conn.commit()
 

@@ -6,10 +6,10 @@ the same attendees or topic to brief the user before the next meeting.
 """
 
 from typing import Dict, Any, List
-from agents.communication.schemas import CommunicationState
+from agents.communication.schemas import MeetingState
 from agents.communication.tools.meeting_search_tool import MeetingSearchTool, MeetingSearchInput
 
-def revision_node(state: CommunicationState) -> CommunicationState:
+def revision_node(state: MeetingState) -> MeetingState:
     """
     Search for past related meetings, extract action items and summaries,
     and append a 'historical context' view to the state for the brief context.
