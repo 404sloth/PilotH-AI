@@ -57,7 +57,7 @@ TOOL_REGISTRY = {
                     "vendors for different services",
                 ],
                 "required_params": [],
-                "optional_params": ["service_required", "country", "vendor_name", "vendor_id", "industry", "category", "top_n"],
+                "optional_params": ["service_required", "country", "vendor_name", "vendor_id", "industry", "category", "tier", "contract_status", "top_n"],
                 "default": True,
             },
             "find_best": {
@@ -352,7 +352,7 @@ Available Agents and Tools:
 Instructions:
 1. Carefully analyze the user request
 2. Match to the most relevant agent and action
-3. Extract all relevant parameters from the message
+3. Extract all relevant parameters from the message (e.g. for vendor searches, look for specific countries, categories, industries, tiers like 'preferred', or contract status like 'active').
 4. Provide confidence score (0.0-1.0) based on clarity
 5. Explain your reasoning
 
@@ -700,16 +700,23 @@ Return ONLY valid JSON with NO markdown:
             params["vendor_name"] = name_match.group(1).strip(" .")
 
         if "preferred" in lower:
-            params["required_tier"] = "preferred"
+            params["tier"] = "preferred"
         elif "standard" in lower:
-            params["required_tier"] = "standard"
+            params["tier"] = "standard"
         elif "trial" in lower:
-            params["required_tier"] = "trial"
+            params["tier"] = "trial"
+
+        if "active" in lower:
+            params["contract_status"] = "active"
+        elif "expired" in lower:
+            params["contract_status"] = "expired"
 
         if re.search(r"\b(?:us|usa|united states)\b", lower):
             params["country"] = "US"
         elif re.search(r"\beu\b|\beurope\b", lower):
             params["country"] = "EU"
+        elif re.search(r"\b(?:gb|uk|united kingdom)\b", lower):
+            params["country"] = "GB"
 
         if "all vendors" in lower or "across all" in lower:
             params["top_n"] = 20

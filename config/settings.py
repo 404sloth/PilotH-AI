@@ -38,11 +38,11 @@ class Settings(BaseSettings):
     )
 
     # ── Observability ───────────────────────────────────────
-    langsmith_api_key: str = Field("", description="LangSmith tracing API key")
-    langsmith_project: str = Field(
-        "piloth-vendor", description="LangSmith project name"
+    langchain_api_key: str = Field("", description="LangSmith tracing API key")
+    langchain_project: str = Field(
+        "ai-agents-testing", description="LangSmith project name"
     )
-    langsmith_tracing_v2: bool = Field(False, description="Enable LangSmith tracing")
+    langchain_tracing_v2: bool = Field(True, description="Enable LangSmith tracing")
 
     # ── Server ──────────────────────────────────────────────
     host: str = Field("0.0.0.0")

@@ -50,6 +50,8 @@ def _run_vendor_discovery(state: VendorState) -> Dict[str, Any]:
             industry=state.get("industry"),
             category=state.get("category"),
             country=state.get("country"),
+            tier=state.get("tier"),
+            contract_status=state.get("contract_status"),
             limit=min(limit, 50),
         )
     )
@@ -109,7 +111,7 @@ def _run_matcher(state: VendorState) -> Dict[str, Any]:
             budget_monthly=state.get("budget_monthly"),
             min_quality_score=state.get("min_quality_score", 75.0),
             min_on_time_rate=state.get("min_on_time_rate", 0.85),
-            required_tier=state.get("required_tier"),
+            required_tier=state.get("tier"),
             country=state.get("country"),
             top_n=state.get("top_n", 5),
             client_project_id=state.get("client_project_id"),
@@ -132,6 +134,7 @@ def _run_matcher(state: VendorState) -> Dict[str, Any]:
     ranked = [v.model_dump() for v in result.ranked_vendors]
     return {
         "ranked_vendors": ranked,
+        "comparison_matrix": result.comparison_matrix,
         "top_recommendation": result.top_recommendation,
         "vendor_id": result.top_recommendation,
         "messages": [

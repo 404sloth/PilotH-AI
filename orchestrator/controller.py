@@ -221,12 +221,23 @@ Guidelines:
         from llm.model_factory import get_llm
         from langchain_core.messages import HumanMessage, SystemMessage
 
-        # If agent already provided a good summary, use it
-        if result.get("llm_summary"):
-            return {"response": result["llm_summary"], "data": result}
-
         agent = intent.get("agent", "")
         action = intent.get("action", "")
+        
+        # CLEAN PAYLOAD: Ignore internal state fields like 'messages', 'logic', etc.
+        # This keeps the formatting LLM focused on the actual data.
+        internal_keys = {"messages", "logic", "reflection", "requires_human_review", "checkpoint", "reflection_log"}
+        clean_result = {k: v for k, v in result.items() if k not in internal_keys and v not in (None, [], {})}
+        
+        # Safely convert to string
+        def safe_serialize(obj):
+            try:
+                import json
+                return json.dumps(obj, indent=2, default=str)
+            except Exception:
+                return str(obj)
+                
+        raw_payload = safe_serialize(clean_result)[:4000] # Slightly smaller to leave room for prompt instructions
 
         prompt = f"""You are a senior enterprise data strategist. Your goal is to transform raw system data into a beautiful, professional, and actionable response for the user.
 
@@ -234,18 +245,19 @@ USER'S REQUEST: "{original_query}"
 INTELLIGENCE SOURCE: {agent} (Action: {action})
 
 RAW DATA PAYLOAD:
-{json.dumps(result, indent=2)[:5000]}
+{raw_payload}
 
 INSTRUCTIONS:
 1. STRUCTURE: Use clear headings (##) and sub-headings (###) to organize information.
-2. TABLES: If the data contains lists of items (vendors, meetings, metrics), ALWAYS present them in a clean Markdown Table format.
+2. TABLES: If the data contains lists of items (vendors, meetings, metrics), ALWAYS present them in a clean Markdown Table format extracting all relevant data from the objects.
    - Example: | Name | Status | Expiry |
               |------|--------|--------|
 3. BULLETS: Use bullet points for key findings, risks, or recommendations.
 4. TYPOGRAPHY: Use **bold** for emphasis and `code` for IDs or specific references.
 5. EXPLANATION: After presenting data/tables, provide a concise "Executive Analysis" explaining what the data means for the user.
-6. NO PLACEHOLDERS: Do NOT say 'See details below'. You are the detail. Present everything here.
-7. PROFESSIONALISM: Maintain a premium, high-trust enterprise tone.
+6. RESPOND DIRECTLY: Do not print 'Here is the data' or 'Based on the payload'. Just give the final formatted response.
+7. NO PLACEHOLDERS: Do NOT say 'See details below'. You are the detail. Present everything here.
+8. PROFESSIONALISM: Maintain a premium, high-trust enterprise tone.
 
 If no relevant data was found, provide a professional explanation of what was searched and suggest specific alternative queries.
 """
@@ -253,5 +265,47 @@ If no relevant data was found, provide a professional explanation of what was se
             llm = get_llm(temperature=0.1)  # Low temp for precise formatting
             resp = llm.invoke([HumanMessage(content=prompt)])
             return {"response": resp.content.strip(), "data": result}
-        except Exception:
-            return {"response": "Request processed successfully. Please refer to the intelligence trace for the raw results.", "data": result}
+        except Exception as e:
+            logger.warning(f"Formatting LLM failed: {e}. Falling back to manual formatting.")
+            return self._manual_fallback_formatter(result, intent, original_query)
+
+    def _manual_fallback_formatter(self, result: Dict[str, Any], intent: Dict[str, Any], query: str) -> Dict[str, Any]:
+        """Simple rule-based formatter to ensure user gets a table even if LLM fails."""
+        lines = [f"## Results for: {query.capitalize()}", ""]
+        
+        # Identify the primary data list
+        data_list = []
+        headers = []
+        
+        if "vendors" in result and isinstance(result["vendors"], list) and result["vendors"]:
+            data_list = result["vendors"]
+            headers = ["Vendor ID", "Name", "Tier", "Country", "Status"]
+        elif "ranked_vendors" in result and isinstance(result["ranked_vendors"], list) and result["ranked_vendors"]:
+            data_list = result["ranked_vendors"]
+            headers = ["Name", "Tier", "Fit Score", "Country"]
+        elif "meetings" in result and isinstance(result["meetings"], list) and result["meetings"]:
+            data_list = result["meetings"]
+            headers = ["Title", "Time", "Participants"]
+
+        if data_list:
+            # Build Table
+            header_row = "| " + " | ".join(headers) + " |"
+            sep_row = "| " + " | ".join(["---"] * len(headers)) + " |"
+            lines.append(header_row)
+            lines.append(sep_row)
+            
+            for item in data_list[:20]: # Limit to 20 for readability
+                row = []
+                for h in headers:
+                    key = h.lower().replace(" ", "_")
+                    if key == "status": key = "contract_status"
+                    val = item.get(key, item.get(h.lower(), "N/A"))
+                    row.append(str(val))
+                lines.append("| " + " | ".join(row) + " |")
+            
+            lines.append("\n### Executive Analysis (Auto-Generated)")
+            lines.append(f"Successfully retrieved {len(data_list)} record(s) matching your request. Displaying the top matches in tabular form.")
+        else:
+            lines.append("Search executed successfully, but no matching records were found in the database. Please try adjusting your filters (e.g. check country codes or service names).")
+
+        return {"response": "\n".join(lines), "data": result}

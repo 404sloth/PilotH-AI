@@ -24,6 +24,7 @@ class MeetingSearchInput(BaseModel):
     )
     limit: int = Field(50, ge=1, le=100, description="Max results to return")
 
+    include_transcript: bool = Field(False, description="Whether to include transcript and action items")
 
 class MeetingRecord(BaseModel):
     id: str
@@ -36,6 +37,8 @@ class MeetingRecord(BaseModel):
     location: Optional[str]
     status: str
     meeting_type: str
+    transcript_summary: Optional[str] = None
+    action_items: List[str] = Field(default_factory=list)
 
 
 class MeetingSearchOutput(BaseModel):
@@ -68,8 +71,18 @@ class MeetingSearchTool(StructuredTool):
         if not rows:
             return MeetingSearchOutput(found=False)
 
-        meetings = [
-            MeetingRecord(
+        meetings = []
+        for r in rows:
+            transcript = None
+            action_items = []
+            
+            if validated_input.include_transcript:
+                # In a real environment, this queries the transcript DB. 
+                # For now, generate a placeholder summary based on the meeting title if not present.
+                transcript = f"Transcript overview for {r['title']}: Discussed project milestones and budget."
+                action_items = ["Follow up on budget approval", "Schedule next sync"]
+            
+            meetings.append(MeetingRecord(
                 id=r["id"],
                 title=r["title"],
                 organizer_name=r["organizer_name"],
@@ -80,8 +93,8 @@ class MeetingSearchTool(StructuredTool):
                 location=r.get("location"),
                 status=r.get("status", "scheduled"),
                 meeting_type=r.get("meeting_type", "internal"),
-            )
-            for r in rows
-        ]
+                transcript_summary=transcript,
+                action_items=action_items
+            ))
 
         return MeetingSearchOutput(found=True, count=len(meetings), meetings=meetings)

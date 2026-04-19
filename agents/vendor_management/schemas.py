@@ -21,6 +21,7 @@ class VendorAction(str, Enum):
     MONITOR_SLA = "monitor_sla"  # Check SLA compliance
     TRACK_MILESTONES = "track_milestones"  # Review milestone status
     SUMMARIZE_CONTRACT = "summarize_contract"  # Parse and summarize contract terms
+    GAP_ANALYSIS = "gap_analysis" # Identify unmet capabilities
     FULL_ASSESSMENT = "full_assessment"  # Combination of all of the above
 
 
@@ -72,8 +73,11 @@ class VendorManagementInput(BaseModel):
     )
     min_quality_score: float = Field(75.0, ge=0, le=100)
     min_on_time_rate: float = Field(0.85, ge=0, le=1.0)
-    required_tier: Optional[str] = Field(
+    tier: Optional[str] = Field(
         None, description="preferred | standard | trial"
+    )
+    contract_status: Optional[str] = Field(
+        None, description="active | expired | pending"
     )
     country: Optional[str] = Field(None, description="Country ISO code (e.g. US)")
     client_project_id: Optional[str] = Field(
@@ -111,6 +115,7 @@ class VendorManagementOutput(BaseModel):
 
     # For FIND_BEST
     ranked_vendors: List[Dict[str, Any]] = Field(default_factory=list)
+    comparison_matrix: List[Dict[str, Any]] = Field(default_factory=list)
     top_recommendation: Optional[str] = None  # vendor_id
 
     # For assessment
@@ -146,7 +151,8 @@ class VendorState(TypedDict, total=False):
     budget_monthly: Optional[float]
     min_quality_score: float
     min_on_time_rate: float
-    required_tier: Optional[str]
+    tier: Optional[str]
+    contract_status: Optional[str]
     country: Optional[str]
     client_project_id: Optional[str]
     top_n: int
@@ -157,6 +163,7 @@ class VendorState(TypedDict, total=False):
     vendors: List[Dict[str, Any]]
     vendor_records: List[Dict[str, Any]]  # from vendor_search / vendor_matcher
     ranked_vendors: List[Dict[str, Any]]  # scored candidates
+    comparison_matrix: List[Dict[str, Any]] # tabular analysis
     top_recommendation: Optional[str]
     vendor_details: Dict[str, Any]  # single vendor full record
     sla_data: Dict[str, Any]
@@ -169,6 +176,7 @@ class VendorState(TypedDict, total=False):
     recommendations: List[str]
     overall_score: Optional[float]
     sla_compliance: Optional[float]
+    reflection: Optional[Dict[str, Any]]
     llm_summary: Optional[str]
     requires_human_review: bool
     error: Optional[str]

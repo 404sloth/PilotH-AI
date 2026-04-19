@@ -178,22 +178,22 @@ def get_tracer(service_name: str = "piloth") -> DistributedTracer:
 def init_langsmith_tracing() -> bool:
     """Initialize LangSmith tracing if configured."""
     try:
-        api_key = os.getenv("LANGSMITH_API_KEY")
+        api_key = os.getenv("LANGCHAIN_API_KEY")
         if not api_key:
             return False
 
         from langsmith import Client
         from langchain.callbacks.tracers.langsmith import LangSmithTracer
 
-        os.environ["LANGSMITH_TRACING"] = "true"
-        os.environ["LANGSMITH_API_KEY"] = api_key
-        os.environ["LANGSMITH_PROJECT"] = os.getenv(
-            "LANGSMITH_PROJECT", "piloth-vendor"
+        os.environ["LANGCHAIN_TRACING_V2"] = "true"
+        os.environ["LANGCHAIN_API_KEY"] = api_key
+        os.environ["LANGCHAIN_PROJECT"] = os.getenv(
+            "LANGCHAIN_PROJECT", "ai-agents-testing"
         )
         logging.info("✓ LangSmith tracing initialized")
         return True
     except ImportError:
-        logging.warning("LangSmith not installed; skipping LangSmith setup")
+        logging.warning("langsmith package not installed; skipping LangSmith setup")
         return False
     except Exception as e:
         logging.warning(f"Failed to initialize LangSmith: {e}")

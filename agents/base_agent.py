@@ -138,8 +138,17 @@ class BaseAgent(ABC):
             validated_input = self.validate_input(input_data)
             graph = self.get_subgraph()
 
+            # Prepare execution config for tracing
+            config = {}
+            if os.getenv("LANGCHAIN_TRACING_V2") == "true":
+                try:
+                    from langchain.callbacks.tracers.langsmith import LangSmithTracer
+                    config["callbacks"] = [LangSmithTracer(project_name=os.getenv("LANGCHAIN_PROJECT", "ai-agents-testing"))]
+                except (ImportError, Exception):
+                    pass
+
             # Run the graph (uses checkpointer from orchestrator context if provided)
-            result = graph.invoke(validated_input)
+            result = graph.invoke(validated_input, config=config)
 
             validated_output = self.validate_output(result)
 
@@ -168,6 +177,16 @@ class BaseAgent(ABC):
         """Async version of execute."""
         validated_input = self.validate_input(input_data)
         graph = self.get_subgraph()
-        result = await graph.ainvoke(validated_input)
+
+        # Prepare execution config for tracing
+        config = {}
+        if os.getenv("LANGCHAIN_TRACING_V2") == "true":
+            try:
+                from langchain.callbacks.tracers.langsmith import LangSmithTracer
+                config["callbacks"] = [LangSmithTracer(project_name=os.getenv("LANGCHAIN_PROJECT", "ai-agents-testing"))]
+            except (ImportError, Exception):
+                pass
+
+        result = await graph.ainvoke(validated_input, config=config)
         validated_output = self.validate_output(result)
         return validated_output

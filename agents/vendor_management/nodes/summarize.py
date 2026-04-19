@@ -103,6 +103,8 @@ Search Criteria:
 - Service: {service_filter or 'Any'}
 - Industry: {industry_filter or 'Any'}
 - Country: {country or 'Any'}
+- Tier: {state.get('tier') or 'Any'}
+- Status: {state.get('contract_status') or 'Any'}
 
 Vendor List:
 {', '.join(vendor_names)}
@@ -158,8 +160,11 @@ def _summarize_find_best(state: VendorState) -> Dict[str, Any]:
 Top vendors (ranked by fit score):
 {json.dumps(ranked[:5], indent=2)}
 
-Write a highly detailed executive recommendation. Mention the top vendor '{top.get('name')}' and their fit score of {top.get('fit_score', 0):.1f}/100.
-Explain why they are better than the runner-ups based on the data provided."""
+Write a highly detailed executive recommendation format in Markdown. 
+Mention the top vendor '{top.get('name')}' and their fit score of {top.get('fit_score', 0):.1f}/100.
+Filters applied: Tier: {state.get('tier') or 'Any'}, Status: {state.get('contract_status') or 'Any'}.
+Explain why they are better than the runner-ups based on the data provided.
+Include a Markdown table comparing the top 3 vendors, showing columns for Vendor, Cost, SLA Score, Reliability, and Fit Score."""
 
     summary = _call_llm(prompt) or _fallback_find_best(top, ranked, service)
 

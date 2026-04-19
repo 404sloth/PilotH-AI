@@ -42,13 +42,16 @@ from .nodes import (
 )
 
 
+from .nodes.revision_node import revision_node
+
 def _route_action(state: MeetingState) -> str:
     """Dispatch to the correct sub-graph based on action."""
     action = state.get("action", "schedule")
     if action == "summarize":
         return "retrieve_transcript"
     if action == "brief":
-        return "gather_context"
+        # Start with revision_node for briefing
+        return "revision_node"
     return "resolve_participants"  # default: schedule
 
 
@@ -57,12 +60,6 @@ def build_meeting_graph(
 ) -> StateGraph:
     """
     Build and compile the Meeting & Communication LangGraph workflow.
-
-    Args:
-        checkpointer: Optional LangGraph memory checkpointer for HITL resume.
-
-    Returns:
-        Compiled StateGraph.
     """
     builder = StateGraph(MeetingState)
 
@@ -93,11 +90,13 @@ def build_meeting_graph(
     builder.add_edge("draft_followup", "finalize")
 
     # ── Briefing sub-graph ─────────────────────────────────────────────────
+    builder.add_node("revision_node", revision_node)
     builder.add_node("gather_context", gather_context_node)
     builder.add_node("analyze_sentiment", analyze_sentiment_node)
     builder.add_node("generate_agenda", generate_agenda_node)
     builder.add_node("compile_briefing", compile_briefing_node)
 
+    builder.add_edge("revision_node", "gather_context")
     builder.add_edge("gather_context", "analyze_sentiment")
     builder.add_edge("analyze_sentiment", "generate_agenda")
     builder.add_edge("generate_agenda", "compile_briefing")
@@ -114,7 +113,7 @@ def build_meeting_graph(
         {
             "resolve_participants": "resolve_participants",
             "retrieve_transcript": "retrieve_transcript",
-            "gather_context": "gather_context",
+            "revision_node": "revision_node",
         },
     )
 
