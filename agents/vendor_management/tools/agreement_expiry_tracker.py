@@ -91,8 +91,27 @@ class AgreementExpiryTool(StructuredTool):
                 if days_remaining <= days_ahead or (include_expired and days_remaining < 0):
                     agr["days_remaining"] = days_remaining
                     agr["status_text"] = self._get_status_text(days_remaining)
+                    
+                    # Check SLA compliance for expiring agreements to generate risk and recommendations
+                    from integrations.data_warehouse.vendor_db import get_sla_compliance
+                    vendor_id = agr.get("vendor_id", "V_001") # Defaulting to ensure logic runs
+                    sla_data = get_sla_compliance(vendor_id)
+                    sla_score = sla_data["overall_compliance"] if sla_data else 100.0
+                    
+                    agr["sla_score"] = sla_score
+                    if sla_score < 75.0:
+                        agr["risk_level"] = "HIGH"
+                        agr["recommendation"] = "RENEGOTIATE or TERMINATE (Poor SLA performance)"
+                    elif sla_score < 90.0:
+                        agr["risk_level"] = "MEDIUM"
+                        agr["recommendation"] = "RENEGOTIATE (SLA performance issues noted)"
+                    else:
+                        agr["risk_level"] = "LOW"
+                        agr["recommendation"] = "RENEW (Good standing)"
+                        
                     expiring.append(agr)
-            except:
+            except Exception as ex:
+                logger.error(f"Error parsing agreement {agr}: {ex}")
                 pass
         
         # Sort by urgency

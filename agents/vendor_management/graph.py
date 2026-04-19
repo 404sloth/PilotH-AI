@@ -2,8 +2,9 @@
 LangGraph workflow for the Vendor Management Agent.
 
 Graph topology:
-  START → fetch_vendor → [route] → evaluate → risk_detect → summarize → END
-                                ↘ summarize (for find_best, skip evaluate+risk)
+  START → fetch_vendor → [route] → evaluate → sla_analyzer → risk_detect → summarize → END
+                                ↘ summarize (for search_vendors)
+                                ↘ evaluate (for find_best, then skip later nodes if preferred)
 """
 
 from __future__ import annotations
@@ -20,20 +21,22 @@ from .nodes import (
     risk_detect_node,
     summarize_node,
 )
+from .nodes.sla_analyzer import sla_analyzer_node
 
 
 def _route_after_fetch(state: VendorState) -> str:
     """
     Conditional routing after fetch_vendor:
     - SEARCH_VENDORS: jump straight to summarize (discovery already complete)
-    - FIND_BEST: jump straight to summarize (ranking already done by VendorMatcherTool)
+    - FIND_BEST: jump straight to evaluate to build ranking matrix
     - Error:     jump to summarize to surface the error gracefully
-    - Default:   proceed through evaluate → risk_detect → summarize
+    - Default:   proceed through evaluate → sla_analyzer → risk_detect → summarize
     """
     if state.get("error"):
+        return "reflexion"
+    if state.get("action") == "search_vendors":
         return "summarize"
-    if state.get("action") in {"search_vendors", "find_best"}:
-        return "summarize"
+    # Even for find_best, we route to "evaluate" so it can build the ComparisonMatrix
     return "evaluate"
 
 
@@ -45,22 +48,16 @@ def build_vendor_graph(
 ) -> StateGraph:
     """
     Build and compile the Vendor Management LangGraph workflow.
-
-    Args:
-        llm_with_tools:  LLM with tools bound (reserved for future tool-calling nodes)
-        tools:           Tool list (reserved for agent executor pattern)
-        hitl_manager:    Human-in-the-loop manager (reserved for interrupt nodes)
-        checkpointer:    Optional memory checkpointer for multi-turn persistence
-
-    Returns:
-        Compiled StateGraph
     """
     builder = StateGraph(VendorState)
 
     # Register nodes
+    from agents.reflexion_node import reflexion_node
     builder.add_node("fetch_vendor", fetch_vendor_node)
     builder.add_node("evaluate", evaluate_node)
+    builder.add_node("sla_analyzer", sla_analyzer_node)
     builder.add_node("risk_detect", risk_detect_node)
+    builder.add_node("reflexion", reflexion_node)
     builder.add_node("summarize", summarize_node)
 
     # Entry
@@ -73,12 +70,15 @@ def build_vendor_graph(
         {
             "evaluate": "evaluate",
             "summarize": "summarize",
+            "reflexion": "reflexion",
         },
     )
 
-    # Linear path for full assessment / evaluate / sla / milestone actions
-    builder.add_edge("evaluate", "risk_detect")
+    # Linear path
+    builder.add_edge("evaluate", "sla_analyzer")
+    builder.add_edge("sla_analyzer", "risk_detect")
     builder.add_edge("risk_detect", "summarize")
+    builder.add_edge("reflexion", "summarize")
     builder.add_edge("summarize", END)
 
     if checkpointer:

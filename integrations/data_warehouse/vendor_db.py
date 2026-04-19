@@ -27,6 +27,8 @@ def search_vendors(
     country: Optional[str] = None,
     industry: Optional[str] = None,
     category: Optional[str] = None,
+    tier: Optional[str] = None,
+    contract_status: Optional[str] = None,
     limit: int = 20,
 ) -> List[Dict[str, Any]]:
     """
@@ -40,7 +42,7 @@ def search_vendors(
 
         # Rebuild with service_tag handled in JOIN
         query, params = _build_vendor_query(
-            vendor_id, vendor_name, service_tag, country, industry, category
+            vendor_id, vendor_name, service_tag, country, industry, category, tier, contract_status
         )
 
         query += f" LIMIT {int(limit)}"
@@ -70,6 +72,8 @@ def _build_vendor_query(
     country: Optional[str],
     industry: Optional[str] = None,
     category: Optional[str] = None,
+    tier: Optional[str] = None,
+    contract_status: Optional[str] = None,
 ) -> tuple[str, list]:
     """Internal helper to assemble the vendor search query safely."""
     base = """
@@ -92,11 +96,10 @@ def _build_vendor_query(
             vp.total_projects_completed,
             vp.avg_client_rating
         FROM vendors v
-        JOIN service_categories sc  ON sc.id = v.category_id
-        JOIN industries ind         ON ind.id = v.industry_id
+        LEFT JOIN service_categories sc  ON sc.id = v.category_id
+        LEFT JOIN industries ind         ON ind.id = v.industry_id
         LEFT JOIN vendor_performance vp ON vp.vendor_id = v.id
     """
-
     joins: List[str] = []
     filters: List[str] = []
     params: List[Any] = []
@@ -116,8 +119,18 @@ def _build_vendor_query(
         params.append(f"%{vendor_name.lower()}%")
 
     if country:
+        # Fuzzy country match: allow full names or common abbreviations
+        country_map = {
+            "united states": "US", "usa": "US", "us": "US",
+            "united kingdom": "GB", "uk": "GB", "gb": "GB",
+            "germany": "DE", "deutschland": "DE", "de": "DE",
+            "india": "IN", "in": "IN",
+            "france": "FR", "fr": "FR",
+            "canada": "CA", "ca": "CA",
+        }
+        mapped = country_map.get(country.lower(), country.upper())
         filters.append("v.country = ?")
-        params.append(country.upper())
+        params.append(mapped)
 
     if industry:
         filters.append("LOWER(ind.name) LIKE ?")
@@ -127,10 +140,19 @@ def _build_vendor_query(
         filters.append("LOWER(sc.name) LIKE ?")
         params.append(f"%{category.lower()}%")
 
+    if tier:
+        filters.append("v.tier = ?")
+        params.append(tier.lower())
+
+    if contract_status:
+        filters.append("v.contract_status = ?")
+        params.append(contract_status.lower())
+
     sql = base + " ".join(joins)
     if filters:
         sql += " WHERE " + " AND ".join(filters)
 
+    logger.debug(f"Vendor Search SQL: {sql} | Params: {params}")
     return sql, params
 
 

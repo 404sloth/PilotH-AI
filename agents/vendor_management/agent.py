@@ -27,6 +27,7 @@ from .tools.risk_assessment import VendorRiskAssessmentTool
 from .tools.financial_analyzer import VendorFinancialTool
 from .tools.kb_search import KnowledgeBaseSearchTool
 
+from .tools.gap_analyzer import GapAnalyzerTool
 
 class VendorManagementAgent(BaseAgent):
     """
@@ -38,6 +39,7 @@ class VendorManagementAgent(BaseAgent):
     • evaluate        — score a specific vendor across key dimensions (via LLM)
     • monitor_sla     — check SLA compliance and breaches
     • track_milestones— analyse project milestone health and delays
+    • gap_analysis    — identify capabilities not met by vendors
     • full_assessment — run the complete pipeline for a single vendor
     """
 
@@ -67,6 +69,7 @@ class VendorManagementAgent(BaseAgent):
             VendorRiskAssessmentTool(),
             VendorFinancialTool(),
             KnowledgeBaseSearchTool(),
+            GapAnalyzerTool(),
         ]:
             self.tool_registry.register_tool(tool, self.name)
 
@@ -122,7 +125,7 @@ class VendorManagementAgent(BaseAgent):
             "top_n": validated_in.top_n,
             "contract_reference": validated_in.contract_reference,
             "project_id": validated_in.project_id,
-            "messages": [],
+            "messages": input_data.get("messages", []),
         }
 
         graph = self.get_subgraph()
@@ -136,6 +139,7 @@ class VendorManagementAgent(BaseAgent):
             or validated_in.vendor_name,
             "vendors": result.get("vendors", []),
             "ranked_vendors": result.get("ranked_vendors", []),
+            "comparison_matrix": result.get("comparison_matrix", []),
             "top_recommendation": result.get("top_recommendation"),
             "overall_score": result.get("overall_score"),
             "sla_compliance": result.get("sla_compliance"),

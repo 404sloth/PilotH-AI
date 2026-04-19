@@ -74,12 +74,16 @@ class RankedVendor(BaseModel):
     currency: Optional[str]
     services: List[str]
     selection_reason: str
+    sla_score: Optional[float] = None
+    reliability: Optional[float] = None
+    latency: Optional[float] = None
 
 
 class VendorMatcherOutput(BaseModel):
     service_required: str
     candidates_found: int
     ranked_vendors: List[RankedVendor]
+    comparison_matrix: List[Dict[str, Any]]
     top_recommendation: Optional[str] = None  # vendor_id of #1
 
 
@@ -216,15 +220,21 @@ class VendorMatcherTool(StructuredTool):
                 ranked_rows = rows[:validated_input.top_n]
 
             ranked: List[RankedVendor] = []
+            comparison_matrix: List[Dict[str, Any]] = []
+            
             for i, r in enumerate(ranked_rows, start=1):
                 reason = _build_reason(r, i)
-                
-                # Sanitize reason for logging (remove PII)
                 sanitized_reason = sanitize_data(reason)
+                vendor_id = r["vendor_id"]
+                
+                # Fetch recent SLA compliance if available
+                from integrations.data_warehouse.vendor_db import get_sla_compliance
+                sla_data = get_sla_compliance(vendor_id)
+                sla_score = sla_data["overall_compliance"] if sla_data else r.get("quality_score")
                 
                 rv = RankedVendor(
                     rank=i,
-                    vendor_id=r["vendor_id"],
+                    vendor_id=vendor_id,
                     name=r["name"],
                     tier=r.get("tier", "standard"),
                     fit_score=r["fit_score"],
@@ -236,15 +246,25 @@ class VendorMatcherTool(StructuredTool):
                     currency=r.get("currency", "USD"),
                     services=r.get("services", []),
                     selection_reason=reason,
+                    sla_score=sla_score,
+                    reliability=r.get("on_time_rate", 0.0) * 100,
+                    latency=None  # Can be mapped from detailed metrics later
                 )
                 ranked.append(rv)
+                
+                comparison_matrix.append({
+                    "Vendor": rv.name,
+                    "Cost": f"${rv.monthly_rate:,.0f}/mo" if rv.monthly_rate else "N/A",
+                    "SLA Score": f"{rv.sla_score:.1f}%" if rv.sla_score else "N/A",
+                    "Reliability": f"{rv.reliability:.1f}%" if rv.reliability else "N/A",
+                    "Fit Score": f"{rv.fit_score:.1f}/100"
+                })
 
-                # Persist if we have a client project context
                 if validated_input.client_project_id:
                     try:
                         save_vendor_selection(
                             client_project_id=validated_input.client_project_id,
-                            vendor_id=r["vendor_id"],
+                            vendor_id=vendor_id,
                             fit_score=r["fit_score"],
                             selected=(i == 1),
                             reason=sanitized_reason,
@@ -258,46 +278,17 @@ class VendorMatcherTool(StructuredTool):
 
             duration_ms = (time.time() - start_time) * 1000
 
-            # Record metrics
-            metrics.record_histogram(
-                "vendor_matching.duration_ms",
-                duration_ms,
-                tags={"service_tag": validated_input.service_tag},
-            )
-            metrics.record_histogram(
-                "vendor_matching.candidates",
-                len(ranked),
-                tags={"service_tag": validated_input.service_tag},
-            )
-            metrics.increment_counter(
-                "vendor_matching.success",
-                tags={"service_tag": validated_input.service_tag},
-            )
+            metrics.record_histogram("vendor_matching.duration_ms", duration_ms, tags={"service_tag": validated_input.service_tag})
+            metrics.record_histogram("vendor_matching.candidates", len(ranked), tags={"service_tag": validated_input.service_tag})
+            metrics.increment_counter("vendor_matching.success", tags={"service_tag": validated_input.service_tag})
 
-            otel_logger.info(
-                "Vendor matching complete",
-                agent="vendor_management",
-                action="matching_complete",
-                data={
-                    "service_tag": validated_input.service_tag,
-                    "candidates_found": len(ranked),
-                    "top_recommendation": ranked[0].vendor_id if ranked else None,
-                    "duration_ms": duration_ms,
-                },
-            )
-
-            span.add_event(
-                "matching_complete",
-                {
-                    "candidates": len(ranked),
-                    "duration_ms": duration_ms,
-                },
-            )
+            span.add_event("matching_complete", {"candidates": len(ranked), "duration_ms": duration_ms})
 
             return VendorMatcherOutput(
                 service_required=validated_input.service_tag,
                 candidates_found=len(ranked),
                 ranked_vendors=ranked,
+                comparison_matrix=comparison_matrix,
                 top_recommendation=ranked[0].vendor_id if ranked else None,
             )
 

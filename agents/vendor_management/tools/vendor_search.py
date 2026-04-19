@@ -26,7 +26,13 @@ class VendorSearchInput(BaseModel):
         None, description="Category name to filter by (e.g. Cloud & Infrastructure)"
     )
     country: Optional[str] = Field(
-        None, description="ISO 2-letter country code (e.g. US)"
+        None, description="ISO 2-letter country code or full name (e.g. US, United States)"
+    )
+    tier: Optional[str] = Field(
+        None, description="Vendor tier (e.g. preferred, standard, trial)"
+    )
+    contract_status: Optional[str] = Field(
+        None, description="Contract status (e.g. active, expired)"
     )
     limit: int = Field(10, ge=1, le=50, description="Max results to return")
 
@@ -74,6 +80,8 @@ class VendorSearchTool(StructuredTool):
             country=validated_input.country,
             industry=validated_input.industry,
             category=validated_input.category,
+            tier=validated_input.tier,
+            contract_status=validated_input.contract_status,
             limit=validated_input.limit,
         )
 

@@ -36,7 +36,11 @@ class AgentRouter:
             }
 
         try:
-            input_data = {"action": action, "session_id": session_id, **payload}
+            from orchestrator.memory_manager import MemoryManager
+            mem = MemoryManager(session_id or "default")
+            history = mem.get_messages(10)
+            
+            input_data = {"action": action, "session_id": session_id, "messages": history, **payload}
             logger.info("Routing to agent='%s' action='%s'", agent_name, action)
             return agent.execute(input_data)
         except Exception as e:

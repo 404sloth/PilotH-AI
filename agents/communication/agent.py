@@ -88,7 +88,7 @@ class CommunicationAgent(BaseAgent):
         
         # Build initial state
         state = {
-            "messages": [],
+            "messages": input_data.get("messages", []),
             "action": validated_input.action,
             "params": input_data,
         }
