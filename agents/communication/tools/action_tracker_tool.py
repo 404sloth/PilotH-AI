@@ -39,15 +39,20 @@ class ActionTrackerOutput(BaseModel):
 
 class ActionItemTrackerTool(StructuredTool):
     """
-    Save action items to the meeting DB and return mock project-management task links.
-    PRODUCTION: Swap _create_task with real Jira/Asana/Linear SDK call.
+    Track and manage project/meeting action items.
+    Allows creation, listing, and updates.
     """
 
     name: str = "action_item_tracker"
-    description: str = "Track meeting action items in the database. Returns task IDs and mock PM links."
+    description: str = (
+        "Manage meeting action items (tasks). Supports creation, listing by owner/project, "
+        "and marking items as complete."
+    )
     args_schema: type[BaseModel] = ActionTrackerInput
 
-    def execute(self, inp: ActionTrackerInput) -> ActionTrackerOutput:
+    def execute(
+        self, inp: ActionTrackerInput, config: Optional[RunnableConfig] = None
+    ) -> ActionTrackerOutput:
         from integrations.data_warehouse.meeting_db import (
             save_action_items,
             get_person_by_email,

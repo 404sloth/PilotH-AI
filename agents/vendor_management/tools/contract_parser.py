@@ -41,6 +41,9 @@ class ContractParserOutput(BaseModel):
     message: str = ""
 
 
+from langchain_core.runnables import RunnableConfig
+
+
 class ContractParserTool(StructuredTool):
     """
     Retrieve structured contract details for a vendor from the contracts database.
@@ -54,7 +57,11 @@ class ContractParserTool(StructuredTool):
     )
     args_schema: type[BaseModel] = ContractParserInput
 
-    def execute(self, validated_input: ContractParserInput) -> ContractParserOutput:
+    def execute(
+        self,
+        validated_input: ContractParserInput,
+        config: Optional[RunnableConfig] = None,
+    ) -> ContractParserOutput:
         from integrations.data_warehouse.vendor_db import get_contract_details
 
         if not validated_input.vendor_id and not validated_input.contract_reference:

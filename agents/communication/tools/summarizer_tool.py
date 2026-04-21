@@ -38,7 +38,9 @@ class MeetingSummarizerTool(StructuredTool):
 
     name: str = "meeting_summarizer"
     description: str = (
-        "Summarise a meeting transcript into key decisions, action items, and risks."
+        "Performs high-fidelity strategic summarization of meeting transcripts. "
+        "Extracts executives insights including key points, binding decisions, technical risks, and assignable action items. "
+        "STRATEGIC USAGE: Useful after acquiring a transcript via 'meeting_search' to provide decision-ready briefings."
     )
     args_schema: type[BaseModel] = SummarizerInput
 

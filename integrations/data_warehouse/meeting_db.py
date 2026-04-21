@@ -71,6 +71,8 @@ MEETING_DDL = [
         status         TEXT    NOT NULL DEFAULT 'scheduled',  -- scheduled|cancelled|completed
         meeting_type   TEXT    NOT NULL DEFAULT 'internal',   -- internal|external|hybrid
         google_event_id TEXT,
+        project_id     TEXT    REFERENCES projects(id),
+        transcript     TEXT,
         created_at     TEXT    NOT NULL DEFAULT (datetime('now'))
     )""",
     """CREATE TABLE IF NOT EXISTS meeting_attendees (

@@ -47,17 +47,25 @@ class MeetingSearchOutput(BaseModel):
     meetings: List[MeetingRecord] = Field(default_factory=list)
 
 
+from langchain_core.runnables import RunnableConfig
+
+
 class MeetingSearchTool(StructuredTool):
     """Search the meeting registry. Returns profiles of past or scheduled meetings."""
 
     name: str = "meeting_search"
     description: str = (
-        "Search for meetings by title, participant email, or date range. "
-        "Useful for listing meetings or finding specific transcripts."
+        "Search the global meeting registry for historical or scheduled sessions. "
+        "Filter by title, participants, or date ranges. "
+        "STRATEGIC USAGE: Mandatory first step for analysis or summarization tasks if a 'meeting_id' is not already provided."
     )
     args_schema: type[BaseModel] = MeetingSearchInput
 
-    def execute(self, validated_input: MeetingSearchInput) -> MeetingSearchOutput:
+    def execute(
+        self,
+        validated_input: MeetingSearchInput,
+        config: Optional[RunnableConfig] = None,
+    ) -> MeetingSearchOutput:
         from integrations.data_warehouse.meeting_db import search_meetings
 
         rows = search_meetings(

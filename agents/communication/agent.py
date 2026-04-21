@@ -74,14 +74,14 @@ class CommunicationAgent(BaseAgent):
 
     @property
     def input_schema(self) -> Type[BaseModel]:
-        return CommunicationInput
+        return MeetingRequestInput
 
     @property
     def output_schema(self) -> Type[BaseModel]:
-        return CommunicationOutput
+        return MeetingAgentOutput
 
     def get_subgraph(self):
-        return build_communication_graph(
+        return build_meeting_graph(
             llm_with_tools=self.llm_with_tools,
             tools=self.tools,
             hitl_manager=self.hitl,
@@ -89,30 +89,59 @@ class CommunicationAgent(BaseAgent):
 
     def execute(self, input_data: Dict[str, Any], config: Optional[RunnableConfig] = None) -> Dict[str, Any]:
         """
-        Execute the agent workflow.
+        Execute the communication workflow with full Pydantic validation.
         """
-        validated_input = MeetingRequestInput(**input_data)
+        validated_in = MeetingRequestInput(**input_data)
         
-        # Build initial state
-        state = {
+        # Build initial LangGraph state
+        state_input: Dict[str, Any] = {
+            "action": validated_in.action,
+            "title": validated_in.title,
+            "participants": [p.dict() for p in validated_in.participants],
+            "duration_minutes": validated_in.duration_minutes,
+            "preferred_time_range": validated_in.preferred_time_range,
+            "timezone": validated_in.timezone,
+            "context": validated_in.context,
+            "meeting_id": validated_in.meeting_id,
+            "transcript": validated_input.transcript if hasattr(validated_in, 'transcript') else input_data.get('transcript'),
+            "organizer_email": validated_in.organizer_email,
+            "location": validated_in.location,
+            "session_id": input_data.get("session_id"),
             "messages": input_data.get("messages", []),
-            "action": validated_input.action,
-            "params": input_data,
+            # Pass cross-agent context
+            "context_history": validated_in.context_history,
+            "step_reasoning": validated_in.step_reasoning,
         }
+        
+        # Handle transcript edge case if not in pydantic (check MeetingRequestInput)
+        if "transcript" in input_data:
+            state_input["transcript"] = input_data["transcript"]
 
         graph = self.get_subgraph()
-        # Pass the config to propagate tracing callbacks
-        result = graph.invoke(state, config=config)
+        config = config or {}
+        if "recursion_limit" not in config:
+            config["recursion_limit"] = 50
+            
+        result = graph.invoke(state_input, config=config)
 
-        # Convert result to output schema
-        output = {
-            "action_performed": result.get("action"),
-            "success": result.get("error") is None,
-            "data": result.get("data", {}),
-            "message": (result.get("messages") or [{}])[-1].content
-            if result.get("messages")
-            else None,
+        # Map internal state → Standardized MeetingAgentOutput
+        output_data: Dict[str, Any] = {
+            "action_performed": validated_in.action,
+            "llm_summary": result.get("meeting_summary") or result.get("briefing_doc") or result.get("error"),
+            "thought": result.get("thought"),
+            "data": {
+                "meeting_id": result.get("meeting_id"),
+                "agenda": result.get("agenda_items", []),
+                "action_items": [i.dict() if hasattr(i, 'dict') else i for i in result.get("action_items", [])],
+                "proposed_slots": result.get("proposed_slots", []),
+                "calendar_link": result.get("calendar_link"),
+            },
+            "suggestions": [
+                f"Schedule follow-up for {validated_in.title}",
+                "Send summary to participants"
+            ],
+            "requires_human_review": result.get("requires_approval", False),
             "error": result.get("error"),
         }
 
-        return self.validate_output(output)
+        return self.validate_output(output_data)

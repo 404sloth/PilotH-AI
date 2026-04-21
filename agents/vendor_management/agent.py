@@ -30,6 +30,17 @@ from .tools.financial_health import FinancialHealthTool
 from .tools.performance_predictor import PerformancePredictorTool
 from tools.data_tools.sql_executor import DynamicSQLExecutorTool
 
+from .tools.lifecycle_tools import (
+    generate_rfp_from_meeting,
+    generate_mock_vendor_responses,
+    evaluate_vendor_responses,
+    select_vendor_helper,
+    generate_sow_from_meeting,
+    simulate_daily_status,
+    compute_project_health,
+    get_project_pulse,
+)
+
 
 class VendorManagementAgent(BaseAgent):
     """
@@ -76,6 +87,14 @@ class VendorManagementAgent(BaseAgent):
             FinancialHealthTool(),
             PerformancePredictorTool(),
             DynamicSQLExecutorTool(),
+            generate_rfp_from_meeting,
+            generate_mock_vendor_responses,
+            evaluate_vendor_responses,
+            select_vendor_helper,
+            generate_sow_from_meeting,
+            simulate_daily_status,
+            compute_project_health,
+            get_project_pulse,
         ]:
 
             self.tool_registry.register_tool(tool, self.name)
@@ -121,7 +140,7 @@ class VendorManagementAgent(BaseAgent):
             "vendor_id": validated_in.vendor_id,
             "service_required": validated_in.service_required,
             "industry": validated_in.industry,
-            "category": getattr(validated_in, "category", None),  # Ensure category is passed if present
+            "category": getattr(validated_in, "category", None),
             "budget_monthly": validated_in.budget_monthly,
             "min_quality_score": validated_in.min_quality_score,
             "min_on_time_rate": validated_in.min_on_time_rate,
@@ -132,10 +151,17 @@ class VendorManagementAgent(BaseAgent):
             "contract_reference": validated_in.contract_reference,
             "project_id": validated_in.project_id,
             "messages": input_data.get("messages", []),
+            # Pass cross-agent context
+            "context_history": validated_in.context_history,
+            "step_reasoning": validated_in.step_reasoning,
         }
 
         graph = self.get_subgraph()
-        # Pass the config to propagate tracing callbacks
+        config = config or {}
+        # Pass the config to propagate tracing callbacks + increase limit
+        if "recursion_limit" not in config:
+            config["recursion_limit"] = 50
+            
         result: VendorState = graph.invoke(state_input, config=config)
 
         # Map result → output schema
@@ -156,6 +182,7 @@ class VendorManagementAgent(BaseAgent):
             "risks": result.get("risk_items", []),
             "recommendations": result.get("recommendations", []),
             "llm_summary": result.get("llm_summary"),
+            "thought": result.get("thought"),
             "requires_human_review": result.get("requires_human_review", False),
             "error": result.get("error"),
         }

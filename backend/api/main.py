@@ -122,6 +122,7 @@ def create_app() -> FastAPI:
     from backend.api.routes.knowledge_base_routes import router as kb_router
     from backend.api.routes.reports_simulations_routes import router as reports_sim_router
     from backend.api.routes.discovery_routes import router as discovery_router
+    from backend.api.routes.dashboard import router as dashboard_router
 
     app.include_router(health_router, prefix="/health", tags=["Health"])
     app.include_router(discovery_router, prefix="/api/v1", tags=["A2A Discovery"])
@@ -130,6 +131,7 @@ def create_app() -> FastAPI:
     app.include_router(hitl_router, prefix="/hitl", tags=["Human-in-the-Loop"])
     app.include_router(kb_router, prefix="/kb", tags=["Knowledge Base"])
     app.include_router(reports_sim_router, prefix="/reports", tags=["Reports & Simulations"])
+    app.include_router(dashboard_router, prefix="/dashboard", tags=["Executive Dashboard"])
     app.include_router(websocket_router, tags=["WebSocket"])
 
     return app

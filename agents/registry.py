@@ -56,3 +56,7 @@ class ToolRegistry:
         return {
             agent: [t.name for t in tools] for agent, tools in self._registry.items()
         }
+
+
+# Singleton instance for easy discovery
+registry = ToolRegistry()

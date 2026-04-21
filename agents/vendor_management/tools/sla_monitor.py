@@ -36,6 +36,9 @@ class SLAMonitorOutput(BaseModel):
     data_available: bool
 
 
+from langchain_core.runnables import RunnableConfig
+
+
 class SLAMonitorTool(StructuredTool):
     """Monitor SLA compliance for a vendor. Returns metrics, breach list, and recommendations."""
 
@@ -46,7 +49,11 @@ class SLAMonitorTool(StructuredTool):
     )
     args_schema: type[BaseModel] = SLAMonitorInput
 
-    def execute(self, validated_input: SLAMonitorInput) -> SLAMonitorOutput:
+    def execute(
+        self,
+        validated_input: SLAMonitorInput,
+        config: Optional[RunnableConfig] = None,
+    ) -> SLAMonitorOutput:
         from integrations.data_warehouse.vendor_db import get_sla_compliance
 
         data = get_sla_compliance(

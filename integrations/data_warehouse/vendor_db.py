@@ -554,3 +554,298 @@ def get_vendor_scorecard(vendor_id: str) -> Optional[Dict[str, Any]]:
         "milestones": milestones,
         "contract": contract,
     }
+
+# ============================================================
+# Project Lifecycle Helpers
+# ============================================================
+
+
+def get_meeting_full(meeting_id: str) -> Optional[Dict[str, Any]]:
+    """Fetch meeting with project_id and transcript."""
+    with get_db_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT id, title, project_id, transcript FROM meetings WHERE id = ?",
+            (meeting_id,),
+        )
+        row = cur.fetchone()
+        return dict(row) if row else None
+
+
+def save_rfp(rfp_id: str, project_id: str, content: str) -> str:
+    """Persist an RFP generated for a project."""
+    with get_db_connection() as conn:
+        conn.execute(
+            "INSERT INTO rfps(id, project_id, content) VALUES(?,?,?)",
+            (rfp_id, project_id, content),
+        )
+        conn.commit()
+    return rfp_id
+
+
+def get_rfp(rfp_id: str) -> Optional[Dict[str, Any]]:
+    """Retrieve RFP details."""
+    with get_db_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM rfps WHERE id = ?", (rfp_id,))
+        row = cur.fetchone()
+        return dict(row) if row else None
+
+
+def get_all_active_vendors() -> List[Dict[str, Any]]:
+    """Return all vendors with active contracts."""
+    with get_db_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT id, name, primary_email FROM vendors WHERE contract_status = 'active'"
+        )
+        return [dict(r) for r in cur.fetchall()]
+
+
+def save_vendor_response(
+    response_id: str, rfp_id: str, vendor_id: str, response_text: str
+) -> str:
+    """Save a vendor's response to an RFP."""
+    with get_db_connection() as conn:
+        conn.execute(
+            """
+            INSERT INTO vendor_responses(id, rfp_id, vendor_id, response_text)
+            VALUES(?,?,?,?)
+            """,
+            (response_id, rfp_id, vendor_id, response_text),
+        )
+        conn.commit()
+    return response_id
+
+
+def get_vendor_responses(rfp_id: str) -> List[Dict[str, Any]]:
+    """Retrieve all responses for a given RFP."""
+    with get_db_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT vr.*, v.name AS vendor_name
+            FROM vendor_responses vr
+            JOIN vendors v ON v.id = vr.vendor_id
+            WHERE vr.rfp_id = ?
+            """,
+            (rfp_id,),
+        )
+        return [dict(r) for r in cur.fetchall()]
+
+
+def update_vendor_response_score(response_id: str, score: float) -> None:
+    """Update evaluation score for a vendor response."""
+    with get_db_connection() as conn:
+        conn.execute(
+            "UPDATE vendor_responses SET score = ? WHERE id = ?", (score, response_id)
+        )
+        conn.commit()
+
+
+def select_vendor_for_project(project_id: str, vendor_id: str) -> None:
+    """Finalize vendor selection for a project."""
+    with get_db_connection() as conn:
+        conn.execute(
+            "UPDATE projects SET vendor_id = ? WHERE id = ?", (vendor_id, project_id)
+        )
+        conn.commit()
+
+
+def save_sow(sow_id: str, project_id: str, vendor_id: str, content: str) -> str:
+    """Persist a Statement of Work."""
+    with get_db_connection() as conn:
+        conn.execute(
+            "INSERT INTO sows(id, project_id, vendor_id, content) VALUES(?,?,?,?)",
+            (sow_id, project_id, vendor_id, content),
+        )
+        conn.commit()
+    return sow_id
+
+
+def save_lifecycle_milestone(
+    m_id: str, sow_id: str, title: str, due_date: str, status: str = "on-time"
+) -> None:
+    """Insert a milestone linked to an SOW."""
+    with get_db_connection() as conn:
+        conn.execute(
+            """
+            INSERT INTO lifecycle_milestones(id, sow_id, title, due_date, status)
+            VALUES(?,?,?,?,?)
+            """,
+            (m_id, sow_id, title, due_date, status),
+        )
+        conn.commit()
+
+
+def get_sow_for_project(project_id: str) -> Optional[Dict[str, Any]]:
+    """Fetch SOW for a project."""
+    with get_db_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM sows WHERE project_id = ? LIMIT 1", (project_id,))
+        row = cur.fetchone()
+        return dict(row) if row else None
+
+
+def get_milestones_for_project(project_id: str) -> List[Dict[str, Any]]:
+    """Retrieve all lifecycle milestones for a project via its SOW."""
+    with get_db_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT m.* 
+            FROM lifecycle_milestones m
+            JOIN sows s ON s.id = m.sow_id
+            WHERE s.project_id = ?
+            """,
+            (project_id,),
+        )
+        return [dict(r) for r in cur.fetchall()]
+
+
+def save_daily_status(
+    milestone_id: str,
+    task_desc: str,
+    planned_date: str,
+    actual_completion: Optional[str],
+    status: str,
+) -> None:
+    """Record a daily task status."""
+    with get_db_connection() as conn:
+        conn.execute(
+            """
+            INSERT INTO daily_status(milestone_id, task_description, planned_date, actual_completion, status)
+            VALUES(?,?,?,?,?)
+            """,
+            (milestone_id, task_desc, planned_date, actual_completion, status),
+        )
+        conn.commit()
+
+
+def update_milestone_status(milestone_id: str, status: str) -> None:
+    """Update milestone status based on task analysis."""
+    with get_db_connection() as conn:
+        conn.execute(
+            "UPDATE lifecycle_milestones SET status = ? WHERE id = ?",
+            (status, milestone_id),
+        )
+        conn.commit()
+
+
+def get_project_health_metrics(project_id: str) -> Dict[str, Any]:
+    """Gather statistical data for health calculation."""
+    with get_db_connection() as conn:
+        cur = conn.cursor()
+
+        # Milestone stats
+        cur.execute(
+            """
+            SELECT m.status, COUNT(*) as count 
+            FROM lifecycle_milestones m
+            JOIN sows s ON s.id = m.sow_id
+            WHERE s.project_id = ?
+            GROUP BY m.status
+            """,
+            (project_id,),
+        )
+        m_counts = {r["status"]: r["count"] for r in cur.fetchall()}
+
+        # Daily status stats
+        cur.execute(
+            """
+            SELECT ds.status, COUNT(*) as count
+            FROM daily_status ds
+            JOIN lifecycle_milestones m ON m.id = ds.milestone_id
+            JOIN sows s ON s.id = m.sow_id
+            WHERE s.project_id = ?
+            GROUP BY ds.status
+            """,
+            (project_id,),
+        )
+        ds_counts = {r["status"]: r["count"] for r in cur.fetchall()}
+
+        return {"milestones": m_counts, "tasks": ds_counts}
+
+
+def get_all_projects_summary() -> List[Dict[str, Any]]:
+    """Return a high-level summary of all projects for the dashboard."""
+    with get_db_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT id, name, vendor_id, status, created_at FROM projects")
+        projects = [dict(r) for r in cur.fetchall()]
+        
+        summaries = []
+        for p in projects:
+            health = get_project_health_metrics(p["id"])
+            
+            # Find next milestone
+            cur.execute(
+                """
+                SELECT title, due_date 
+                FROM lifecycle_milestones m
+                JOIN sows s ON s.id = m.sow_id
+                WHERE s.project_id = ? AND m.due_date >= DATE('now')
+                ORDER BY m.due_date ASC LIMIT 1
+                """,
+                (p["id"],),
+            )
+            next_ms = cur.fetchone()
+            
+            # Compute progress
+            total_m = sum(health["milestones"].values())
+            completed_m = health["milestones"].get("on-time", 0) # simplified
+            progress = (completed_m / total_m * 100) if total_m > 0 else 0
+            
+            summaries.append({
+                "id": p["id"],
+                "name": p["name"],
+                "status": p["status"],
+                "progress_percent": round(progress, 1),
+                "next_milestone": dict(next_ms) if next_ms else None,
+                "health_color": "green" if progress > 80 else "amber" if progress > 40 else "red"
+            })
+        return summaries
+
+
+def get_detailed_timeline(project_id: str) -> List[Dict[str, Any]]:
+    """Aggregate all lifecycle events into a chronological timeline."""
+    events = []
+    with get_db_connection() as conn:
+        cur = conn.cursor()
+        
+        # 1. Meetings
+        cur.execute("SELECT id, title, meeting_type, transcript, created_at as date FROM meetings WHERE project_id = ? ORDER BY date ASC", (project_id,))
+        for r in cur.fetchall():
+            events.append({"type": "meeting", "id": r["id"], "title": r["title"], "sub_type": r["meeting_type"], "content": r["transcript"], "date": r["date"]})
+            
+        # 2. RFPs
+        cur.execute("SELECT id, content, created_at as date FROM rfps WHERE project_id = ? ORDER BY date ASC", (project_id,))
+        for r in cur.fetchall():
+            events.append({"type": "rfp", "id": r["id"], "content": r["content"], "date": r["date"]})
+            
+        # 3. Vendor Responses and Selection
+        cur.execute(
+            """
+            SELECT vr.id, v.name as vendor_name, vr.score, vr.submitted_at as date
+            FROM vendor_responses vr
+            JOIN rfps r ON r.id = vr.rfp_id
+            JOIN vendors v ON v.id = vr.vendor_id
+            WHERE r.project_id = ?
+            ORDER BY date ASC
+            """,
+            (project_id,),
+        )
+        for r in cur.fetchall():
+            events.append({"type": "vendor_response", "id": r["id"], "vendor_name": r["vendor_name"], "score": r["score"], "date": r["date"]})
+            
+        # 4. SOWs
+        cur.execute("SELECT id, content, created_at as date FROM sows WHERE project_id = ? ORDER BY date ASC", (project_id,))
+        for r in cur.fetchall():
+            # Get milestones for this SOW
+            cur.execute("SELECT title, due_date, status FROM lifecycle_milestones WHERE sow_id = ?", (r["id"],))
+            milestones = [dict(ms) for ms in cur.fetchall()]
+            events.append({"type": "sow", "id": r["id"], "content": r["content"], "milestones": milestones, "date": r["date"]})
+            
+    # Sort events by date
+    events.sort(key=lambda x: x["date"] or "")
+    return events

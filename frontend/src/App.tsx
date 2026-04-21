@@ -113,6 +113,7 @@ type RoutingMetadata = {
   action_description?: string;
   tool_descriptions?: Record<string, string>;
   intent_reasoning?: string;
+  thought?: string; // The strategic reasoning loop
   params?: Record<string, unknown>;
   data?: Record<string, unknown>;
 };
@@ -124,9 +125,38 @@ type WebSocketResponse = {
   session_id?: string;
   agent?: string;
   action?: string;
+  thought?: string;
   data?: Record<string, unknown>;
   metadata?: RoutingMetadata;
   task_id?: string;
+  step?: {
+    type: string;
+    name: string;
+    status: string;
+    details?: string;
+    data?: Record<string, any>;
+    timestamp: string;
+  };
+};
+
+type PulseProject = {
+  id: string;
+  name: string;
+  health_color: "green" | "amber" | "red";
+  progress_percent: number;
+  status: string;
+  next_milestone?: { title: string; due_date: string };
+};
+
+type PulseEvent = {
+  type: "meeting" | "rfp" | "vendor_response" | "sow";
+  id: string;
+  date: string;
+  content?: string;
+  title?: string;
+  vendor_name?: string;
+  score?: number;
+  milestones?: Array<{ title: string; due_date: string; status: string }>;
 };
 
 const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
@@ -676,6 +706,14 @@ export default function App() {
   const [selectedAgentHint, setSelectedAgentHint] = useState<string | null>(null);
   const [dynamicSuggestions, setDynamicSuggestions] = useState<string[]>(INITIAL_SUGGESTIONS);
   const [tracingExtended, setTracingExtended] = useState(false);
+  const [traceTab, setTraceTab] = useState<"dispatch" | "brain" | "live">("live");
+  const [liveTrace, setLiveTrace] = useState<any[]>([]);
+
+  // Pulse Dashboard State
+  const [pulseProjects, setPulseProjects] = useState<PulseProject[]>([]);
+  const [pulseTimeline, setPulseTimeline] = useState<PulseEvent[]>([]);
+  const [selectedPid, setSelectedPid] = useState<string | null>(null);
+  const [pulseLoading, setPulseLoading] = useState(false);
 
   const wsRef = useRef<WebSocket | null>(null);
   const endRef = useRef<HTMLDivElement | null>(null);
@@ -694,6 +732,12 @@ export default function App() {
     setAgentPickerOpen(false);
     void loadHistory(activeSession);
   }, [activeSession]);
+
+  useEffect(() => {
+    if (activeTab === "dashboard") {
+      void loadPulseProjects();
+    }
+  }, [activeTab]);
 
   useEffect(() => {
     if (!activeSession) return;
@@ -800,6 +844,43 @@ export default function App() {
     );
   }
 
+  async function loadPulseProjects() {
+    setPulseLoading(true);
+    try {
+      const data = await fetchJson<PulseProject[]>(`${API_URL}/dashboard/projects`);
+      setPulseProjects(data);
+    } catch {
+      setToast({ message: "Failed to load Pulse metrics.", type: "error" });
+    } finally {
+      setPulseLoading(false);
+    }
+  }
+
+  async function loadPulseTimeline(projectId: string) {
+    setSelectedPid(projectId);
+    setPulseLoading(true);
+    try {
+      const data = await fetchJson<PulseEvent[]>(`${API_URL}/dashboard/projects/${projectId}/timeline`);
+      setPulseTimeline(data);
+    } catch {
+      setToast({ message: "Failed to load project timeline.", type: "error" });
+    } finally {
+      setPulseLoading(false);
+    }
+  }
+
+  async function handleSimulateLifecycle(projectId: string) {
+    setToast({ message: "Initiating full project simulation...", type: "success" });
+    try {
+      await fetchJson(`${API_URL}/dashboard/projects/${projectId}/simulate-full-lifecycle`, { method: "POST" });
+      setToast({ message: "Simulation complete. Refreshing pulse.", type: "success" });
+      await loadPulseProjects();
+      await loadPulseTimeline(projectId);
+    } catch {
+      setToast({ message: "Simulation failed. Check backend logs.", type: "error" });
+    }
+  }
+
   function appendMessage(message: Omit<Message, "id">) {
     setMessages((previous) => [...previous, { ...message, id: nextMessageId() }]);
   }
@@ -829,6 +910,11 @@ export default function App() {
       return;
     }
 
+    if (parsed.status === "TRACE" && parsed.step) {
+      setLiveTrace((prev) => [...prev, parsed.step]);
+      return;
+    }
+
     if (parsed.status === "WAIT_FOR_APPROVAL" && parsed.task_id) {
       setPendingApproval({ taskId: parsed.task_id, prompt: parsed.message ?? "Approval required." });
       appendMessage({
@@ -845,15 +931,22 @@ export default function App() {
 
     const combinedMetadata = {
       ...(parsed.metadata ?? {}),
-      data: parsed.data ?? parsed.metadata?.data
+      data: parsed.data ?? parsed.metadata?.data,
+      thought: parsed.thought ?? parsed.metadata?.thought,
     } as RoutingMetadata;
 
-    if (parsed.metadata || parsed.data) {
+    // Refresh pulse if a relevant action occurred
+    if (activeTab === "dashboard") {
+      void loadPulseProjects();
+      if (selectedPid) void loadPulseTimeline(selectedPid);
+    }
+
+    if (parsed.metadata || parsed.data || parsed.thought) {
       setLastRouting(combinedMetadata);
 
-      const metaSuggestions = (parsed.metadata as any)?.suggestions as string[] | undefined;
-      if (metaSuggestions && metaSuggestions.length > 0) {
-        setDynamicSuggestions(metaSuggestions);
+      const suggestions = (parsed as any).suggestions || (parsed.metadata as any)?.suggestions;
+      if (suggestions && suggestions.length > 0) {
+        setDynamicSuggestions(suggestions);
       } else {
         updateSuggestions(combinedMetadata);
       }
@@ -913,6 +1006,8 @@ export default function App() {
     refreshSessionFromMessage(activeSession, prompt);
     setDraft("");
     setIsThinking(true);
+    setLiveTrace([]); // Clear trace for new query
+    setTraceTab("live"); // Switch to live view
 
     window.setTimeout(() => replacePendingUserStatus("sent"), 250);
 
@@ -1036,13 +1131,24 @@ export default function App() {
   }
 
   const mainPanel = useMemo(() => {
-    if (activeTab === "dashboard") return renderDashboard(alerts, health, setActiveTab, handleSend, dynamicSuggestions);
+    if (activeTab === "dashboard") {
+      return renderPulseDashboard(
+        pulseProjects,
+        selectedPid,
+        pulseTimeline,
+        pulseLoading,
+        loadPulseTimeline,
+        handleSimulateLifecycle,
+        health,
+        connected,
+      );
+    }
     if (activeTab === "knowledge") {
       return renderKnowledge(kbText, kbSource, kbLoading, setKbText, setKbSource, handleKbSubmit);
     }
     if (activeTab === "research") return renderResearch(handleSend, setActiveTab);
     return null;
-  }, [activeTab, alerts, health, kbText, kbSource, kbLoading, dynamicSuggestions]);
+  }, [activeTab, pulseProjects, selectedPid, pulseTimeline, pulseLoading, kbText, kbSource, kbLoading, health, connected]);
 
   return (
     <div style={appShellStyle}>
@@ -1218,12 +1324,7 @@ export default function App() {
           </div>
         </header>
 
-        {backendDown ? (
-          <div style={backendWarningStyle}>
-            <AlertTriangle size={18} />
-            Recalibrating core. System functions may be limited.
-          </div>
-        ) : null}
+        {backendDown && <OfflineOverlay onRetry={() => window.location.reload()} />}
 
         <div style={contentLayout}>
           {activeTab === "conversations" ? (
@@ -1354,67 +1455,121 @@ export default function App() {
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, y: 8 }}
                       >
-                        <div style={tracePathOuterStyle}>
-                          <TracePathStep label="Analyze Intent" status="complete" icon={Sparkles} />
-                          <TracePathStep
-                            label={prettifyAgent(lastRouting.agent) ?? "Intelligent Routing"}
-                            status="complete"
-                            icon={Bot}
-                          />
-                          <TracePathStep
-                            label={lastRouting.action ?? "Executing Strategy"}
-                            status="complete"
-                            icon={Target}
-                          />
-                          <TracePathStep label="Final Briefing" status="current" icon={CheckCircle2} />
+                        {/* Tab Switcher */}
+                        <div style={{ display: "flex", gap: 12, marginBottom: 20, borderBottom: "1px solid #f1f3f4", paddingBottom: 8 }}>
+                          <button
+                            onClick={() => setTraceTab("live")}
+                            style={{
+                              background: "none", border: "none", fontSize: 10, fontWeight: 700, padding: "4px 0", cursor: "pointer",
+                              color: traceTab === "live" ? "#1a73e8" : "#9aa0a6",
+                              borderBottom: traceTab === "live" ? "2px solid #1a73e8" : "none"
+                            }}
+                          >
+                            LIVE TRACE
+                          </button>
+                          <button
+                            onClick={() => setTraceTab("dispatch")}
+                            style={{
+                              background: "none", border: "none", fontSize: 10, fontWeight: 700, padding: "4px 0", cursor: "pointer",
+                              color: traceTab === "dispatch" ? "#1a73e8" : "#9aa0a6",
+                              borderBottom: traceTab === "dispatch" ? "2px solid #1a73e8" : "none"
+                            }}
+                          >
+                            DISPATCH
+                          </button>
+                          <button
+                            onClick={() => setTraceTab("brain")}
+                            style={{
+                              background: "none", border: "none", fontSize: 10, fontWeight: 700, padding: "4px 0", cursor: "pointer",
+                              color: traceTab === "brain" ? "#1a73e8" : "#9aa0a6",
+                              borderBottom: traceTab === "brain" ? "2px solid #1a73e8" : "none"
+                            }}
+                          >
+                            BRAIN
+                          </button>
                         </div>
 
-                        {lastRouting.intent_reasoning && (
-                          <div style={{ marginTop: 20 }}>
-                            <div
-                              onClick={() => setTracingExtended(!tracingExtended)}
-                              style={traceToggleStyle}
-                            >
-                              <span>{tracingExtended ? "Collapse Reasoning" : "Deep-Dive Insights"}</span>
-                              <ChevronDown
-                                size={14}
-                                style={{
-                                  transform: tracingExtended ? "rotate(180deg)" : "none",
-                                  transition: "transform 0.2s",
-                                }}
+                        {traceTab === "live" ? (
+                          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+                             <div style={tracePathOuterStyle}>
+                               {liveTrace.length === 0 && (
+                                 <div style={{ color: "#9aa0a6", fontSize: 13, textAlign: "center", padding: "20px 0" }}>
+                                   Awaiting execution events...
+                                 </div>
+                               )}
+                               {liveTrace.map((step, i) => (
+                                 <motion.div
+                                   key={i}
+                                   initial={{ opacity: 0, x: -10 }}
+                                   animate={{ opacity: 1, x: 0 }}
+                                   style={{ display: "flex", gap: 12, marginBottom: 16, position: "relative" }}
+                                 >
+                                   <div style={{
+                                     width: 24, height: 24, borderRadius: "50%",
+                                     background: step.status === "running" ? "#e8f0fe" : "#e6f4ea",
+                                     display: "flex", alignItems: "center", justifyContent: "center",
+                                     border: `1px solid ${step.status === "running" ? "#1a73e8" : "#1e8e3e"}`
+                                   }}>
+                                     {step.status === "running" ? (
+                                       <Loader2 size={12} color="#1a73e8" className="spin" />
+                                     ) : (
+                                       <Check size={12} color="#1e8e3e" />
+                                     )}
+                                   </div>
+                                   <div>
+                                      <div style={{ fontSize: 13, fontWeight: 600, color: "#202124" }}>{step.name}</div>
+                                      <div style={{ fontSize: 11, color: "#5f6368" }}>{step.details || (step.status === "completed" ? "Step finished." : "In progress...")}</div>
+                                   </div>
+                                 </motion.div>
+                               ))}
+                             </div>
+                          </motion.div>
+                        ) : traceTab === "dispatch" ? (
+                          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+                            <div style={tracePathOuterStyle}>
+                              <TracePathStep label="Analyze Intent" status="complete" icon={Sparkles} />
+                              <TracePathStep
+                                label={prettifyAgent(lastRouting.agent) ?? "Intelligent Routing"}
+                                status="complete"
+                                icon={Bot}
                               />
+                              <TracePathStep
+                                label={lastRouting.action ?? "Executing Strategy"}
+                                status="complete"
+                                icon={Target}
+                              />
+                              <TracePathStep label="Final Briefing" status="current" icon={CheckCircle2} />
                             </div>
-                            <AnimatePresence>
-                              {tracingExtended && (
-                                <motion.div
-                                  initial={{ height: 0, opacity: 0 }}
-                                  animate={{ height: "auto", opacity: 1 }}
-                                  exit={{ height: 0, opacity: 0 }}
-                                  style={{ overflow: "hidden" }}
-                                >
-                                  <div style={reasoningBoxStyle}>
-                                    <div style={reasoningLabelStyle}>Critical Path Analysis</div>
-                                    <div style={{ lineHeight: 1.6, fontSize: 12.5 }}>
-                                      {lastRouting.intent_reasoning}
-                                    </div>
-                                  </div>
-                                </motion.div>
-                              )}
-                            </AnimatePresence>
-                          </div>
-                        )}
 
-                        <div style={{ marginTop: 24 }}>
-                          <div style={detailsLabelStyle}>Tactical Capabilities</div>
-                          <div style={toolsListStyle}>
-                            {Object.keys(lastRouting.tool_descriptions ?? {}).map((tool) => (
-                              <div key={tool} style={toolChipStyle}>
-                                <div style={toolDotStyle} />
-                                {tool}
+                            <div style={reasoningBoxStyle}>
+                              <div style={reasoningLabelStyle}>Dispatcher Intent Reasoning</div>
+                              <div style={{ lineHeight: 1.6, fontSize: 12.5 }}>
+                                {lastRouting.intent_reasoning || "Logic-based extraction applied."}
                               </div>
-                            ))}
-                          </div>
-                        </div>
+                            </div>
+                          </motion.div>
+                        ) : (
+                          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+                            <div style={reasoningBoxStyle}>
+                              <div style={reasoningLabelStyle}>Strategic Thinking Loop</div>
+                              <div style={{ lineHeight: 1.6, fontSize: 12.5, whiteSpace: "pre-wrap" }}>
+                                {lastRouting.thought || "Direct execution path taken without extended reasoning loop."}
+                              </div>
+                            </div>
+                            
+                            <div style={{ marginTop: 24 }}>
+                              <div style={detailsLabelStyle}>Tactical Capabilities</div>
+                              <div style={toolsListStyle}>
+                                {Object.keys(lastRouting.tool_descriptions ?? {}).map((tool) => (
+                                  <div key={tool} style={toolChipStyle}>
+                                    <div style={toolDotStyle} />
+                                    {tool}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          </motion.div>
+                        )}
                       </motion.div>
                     ) : (
                       <motion.div
@@ -1532,76 +1687,464 @@ function EmptyState({ suggestions, onPickSuggestion }: { suggestions: string[], 
   );
 }
 
-function renderDashboard(
-  alerts: AlertItem[],
-  health: Health | null,
-  setActiveTab: (tab: (typeof NAV)[number]["id"]) => void,
-  handleSend: (text: string) => Promise<void>,
-  suggestions: string[]
-) {
+function SystemHealthConsole({ health, connected }: { health: Health | null; connected: boolean }) {
   return (
-    <div style={contentWrapStyle}>
-      <div style={dashboardGridStyle}>
-        <div style={{ ...contentCardStyle, gridColumn: "span 2" }}>
-          <div style={cardHeaderStyle}>
-            <span style={cardHeaderTitleStyle}>
-              <AlertTriangle size={18} color="#d93025" />
-              Strategic Risk Findings
-            </span>
-            <span style={alertCountStyle}>{alerts.length} Active</span>
+    <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 12,
+          padding: "8px 16px",
+          borderRadius: 16,
+          background: "rgba(255,255,255,0.8)",
+          backdropFilter: "blur(8px)",
+          border: "1px solid rgba(0,0,0,0.05)",
+          boxShadow: "0 4px 12px rgba(0,0,0,0.02)",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div
+            className="heartbeat"
+            style={{
+              width: 8,
+              height: 8,
+              borderRadius: "50%",
+              background: connected ? "#1e8e3e" : "#d93025",
+              boxShadow: connected ? "0 0 10px #1e8e3e80" : "0 0 10px #d9302580",
+            }}
+          />
+          <span style={{ fontSize: 11, fontWeight: 700, color: "#3c4043", textTransform: "uppercase", letterSpacing: "0.02em" }}>
+            {connected ? "Sub-Systems Online" : "Connection Syncing"}
+          </span>
+        </div>
+        <div style={{ width: 1, height: 16, background: "#e8eaed" }} />
+        <div style={{ display: "flex", gap: 16 }}>
+          <HealthMetirc label="Latency" value={connected ? "14ms" : "---"} />
+          <HealthMetirc label="Agents" value="24 Active" />
+          <HealthMetirc label="Database" value={health?.database === "connected" ? "Stable" : "Pending"} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function HealthMetirc({ label, value }: { label: string; value: string }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column" }}>
+      <span style={{ fontSize: 8, fontWeight: 800, color: "#9aa0a6", textTransform: "uppercase" }}>{label}</span>
+      <span style={{ fontSize: 11, fontWeight: 700, color: "#202124" }}>{value}</span>
+    </div>
+  );
+}
+
+function OfflineOverlay({ onRetry }: { onRetry: () => void }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      style={{
+        position: "fixed",
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        zIndex: 5000,
+        background: "rgba(255,255,255,0.85)",
+        backdropFilter: "blur(20px)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        flexDirection: "column",
+        gap: 24,
+      }}
+    >
+      <div style={{ position: "relative" }}>
+        <div
+          className="pulse"
+          style={{
+            width: 80,
+            height: 80,
+            borderRadius: "50%",
+            background: "rgba(26,115,232,0.1)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <WifiOff size={32} color="#1a73e8" />
+        </div>
+      </div>
+      <div style={{ textAlign: "center", maxWidth: 400 }}>
+        <h2 style={{ fontSize: 24, fontWeight: 800, color: "#202124", marginBottom: 8 }}>System Recalibration</h2>
+        <p style={{ fontSize: 14, color: "#5f6368", lineHeight: 1.6 }}>
+          Lost synchronization with core intelligence. Attempting to restore secure channel...
+        </p>
+      </div>
+      <button
+        onClick={onRetry}
+        style={{
+          padding: "12px 32px",
+          background: "#1a73e8",
+          color: "#fff",
+          borderRadius: 99,
+          fontSize: 14,
+          fontWeight: 700,
+          boxShadow: "0 8px 16px rgba(26,115,232,0.3)",
+        }}
+      >
+        Re-establish Connection
+      </button>
+    </motion.div>
+  );
+}
+
+function ProjectScorecard({
+  project,
+  isSelected,
+  onClick,
+}: {
+  project: PulseProject;
+  isSelected: boolean;
+  onClick: () => void;
+}) {
+  const dotColor =
+    project.health_color === "green" ? "#1e8e3e" : project.health_color === "amber" ? "#f9ab00" : "#d93025";
+
+  return (
+    <motion.div
+      whileHover={{ y: -6, boxShadow: "0 20px 40px rgba(0,0,0,0.06)" }}
+      onClick={onClick}
+      style={{
+        padding: "24px",
+        borderRadius: 24,
+        background: isSelected ? "#ffffff" : "rgba(255,255,255,0.5)",
+        border: `1px solid ${isSelected ? "#1a73e8" : "rgba(0,0,0,0.05)"}`,
+        cursor: "pointer",
+        position: "relative",
+        overflow: "hidden",
+        transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
+        boxShadow: isSelected ? "0 12px 32px rgba(26,115,232,0.08)" : "0 4px 12px rgba(0,0,0,0.02)",
+      }}
+    >
+      {isSelected && (
+        <div
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            width: 4,
+            height: "100%",
+            background: "#1a73e8",
+          }}
+        />
+      )}
+      
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <div
+            style={{
+              width: 10,
+              height: 10,
+              borderRadius: 5,
+              background: dotColor,
+              boxShadow: `0 0 12px ${dotColor}60`,
+            }}
+            className={project.status === "in-progress" ? "pulse" : ""}
+          />
+          <div style={{ fontSize: 17, fontWeight: 800, color: "#202124", letterSpacing: "-0.01em" }}>{project.name}</div>
+        </div>
+        <div style={{ fontSize: 10, fontWeight: 800, color: "#9aa0a6", textTransform: "uppercase" }}>{project.id}</div>
+      </div>
+
+      <div style={{ marginBottom: 24 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8, alignItems: "flex-end" }}>
+          <span style={{ fontSize: 11, fontWeight: 700, color: "#5f6368", textTransform: "uppercase", letterSpacing: "0.02em" }}>Phase Performance</span>
+          <span style={{ fontSize: 14, fontWeight: 900, color: "#1a73e8" }}>{project.progress_percent}%</span>
+        </div>
+        <div style={{ height: 6, background: "rgba(0,0,0,0.04)", borderRadius: 99, overflow: "hidden" }}>
+          <motion.div
+            initial={{ width: 0 }}
+            animate={{ width: `${project.progress_percent}%` }}
+            transition={{ duration: 1, ease: "easeOut" }}
+            style={{ height: "100%", background: "linear-gradient(90deg, #1a73e8, #4285f4)", borderRadius: 99 }}
+          />
+        </div>
+      </div>
+
+      {project.next_milestone ? (
+        <div style={{ background: "rgba(26,115,232,0.04)", borderRadius: 16, padding: "12px 16px", border: "1px solid rgba(26,115,232,0.05)" }}>
+          <div style={{ fontSize: 9, fontWeight: 800, color: "#1a73e8", textTransform: "uppercase", marginBottom: 6 }}>Upcoming Strategy</div>
+          <div style={{ fontSize: 13, fontWeight: 700, color: "#202124" }}>{project.next_milestone.title}</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 4 }}>
+            <Clock size={10} color="#5f6368" />
+            <span style={{ fontSize: 11, color: "#5f6368", fontWeight: 500 }}>{project.next_milestone.due_date}</span>
           </div>
-          <div style={alertsContainerStyle}>
-            {alerts.length ? (
-              alerts.map((alert) => (
-                <div key={alert.id} style={alertCardStyle(alert.severity)}>
-                  <div style={alertTitleStyle}>{alert.title}</div>
-                  <div style={alertDescriptionStyle}>{alert.description}</div>
-                  <div style={alertFooterStyle}>
-                    <span style={alertSourceStyle}>{alert.source}</span>
-                    <button style={alertActionButton}>Analyze Logic</button>
+        </div>
+      ) : (
+        <div style={{ fontSize: 12, color: "#9aa0a6", fontStyle: "italic", padding: "8px 0" }}>Finalizing objectives...</div>
+      )}
+    </motion.div>
+  );
+}
+
+function PulseTimeline({ events }: { events: PulseEvent[] }) {
+  if (!events.length) {
+    return (
+      <div style={{ textAlign: "center", padding: "80px 40px", color: "#9aa0a6" }}>
+        <Database size={32} style={{ opacity: 0.2, marginBottom: 16 }} />
+        <div style={{ fontSize: 14, fontWeight: 500 }}>Select a strategic vector to visualize lifecycle events.</div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", padding: "10px 0" }}>
+      {events.map((event, i) => (
+        <motion.div 
+          key={`${event.id}-${i}`}
+          initial={{ opacity: 0, x: -10 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ delay: i * 0.1 }}
+          style={{ display: "flex", gap: 24, position: "relative", paddingBottom: 32 }}
+        >
+          {i < events.length - 1 && (
+            <div
+              style={{
+                position: "absolute",
+                left: 21,
+                top: 48,
+                bottom: 0,
+                width: 2,
+                background: "linear-gradient(to bottom, #e8eaed, transparent)",
+              }}
+            />
+          )}
+
+          <div
+            style={{
+              width: 44,
+              height: 44,
+              borderRadius: 16,
+              background: "#ffffff",
+              border: "1px solid #f1f3f4",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              flexShrink: 0,
+              zIndex: 2,
+              boxShadow: "0 4px 12px rgba(0,0,0,0.03)",
+            }}
+          >
+            {event.type === "meeting" && <MessageSquare size={20} color="#1a73e8" />}
+            {event.type === "rfp" && <Target size={20} color="#d93025" />}
+            {event.type === "vendor_response" && <CheckCheck size={20} color="#1e8e3e" />}
+            {event.type === "sow" && <Database size={20} color="#e37400" />}
+          </div>
+
+          <div style={{ flex: 1 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+               <span style={{ fontSize: 9, fontWeight: 800, color: "#fff", background: "#202124", padding: "2px 8px", borderRadius: 4, textTransform: "uppercase" }}>
+                {event.type}
+              </span>
+              <span style={{ fontSize: 11, fontWeight: 600, color: "#9aa0a6" }}>
+                {new Date(event.date).toLocaleDateString([], { month: "long", day: "numeric", year: "numeric" })}
+              </span>
+            </div>
+
+            <div
+              style={{
+                background: "#ffffff",
+                border: "1px solid rgba(0,0,0,0.05)",
+                borderRadius: 20,
+                padding: "20px",
+                boxShadow: "0 2px 10px rgba(0,0,0,0.02)",
+              }}
+            >
+              <div style={{ fontSize: 16, fontWeight: 800, color: "#202124", marginBottom: 8 }}>
+                {event.title || (event.vendor_name ? `Response from ${event.vendor_name}` : `AI Lifecycle Update`)}
+              </div>
+              
+              {event.score !== undefined && (
+                <div style={{ display: "inline-flex", alignItems: "center", gap: 8, background: "#e6f4ea", padding: "4px 12px", borderRadius: 8, marginBottom: 16 }}>
+                  <TrendingUp size={12} color="#1e8e3e" />
+                  <span style={{ fontSize: 11, fontWeight: 800, color: "#1e8e3e" }}>Match Score: {event.score}%</span>
+                </div>
+              )}
+              
+              {event.content && (
+                <div style={{ fontSize: 14, color: "#5f6368", lineHeight: 1.6, marginBottom: 16 }}>
+                  {event.content}
+                </div>
+              )}
+
+              {event.milestones && (
+                <div style={{ display: "grid", gap: 10, marginTop: 16, borderTop: "1px solid #f1f3f4", paddingTop: 16 }}>
+                  <div style={{ fontSize: 10, fontWeight: 800, color: "#202124", textTransform: "uppercase" }}>Key Deliverables</div>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 8 }}>
+                    {event.milestones.map((m, idx) => (
+                      <div
+                        key={idx}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 10,
+                          fontSize: 12,
+                          padding: "10px 14px",
+                          background: m.status === "completed" ? "rgba(30,142,62,0.05)" : "#f8f9fa",
+                          borderRadius: 12,
+                          color: m.status === "completed" ? "#1e8e3e" : "#3c4043",
+                        }}
+                      >
+                        {m.status === "completed" ? <CheckCircle2 size={14} /> : <Clock size={14} color="#9aa0a6" />}
+                        <span style={{ flex: 1, fontWeight: 600 }}>{m.title}</span>
+                      </div>
+                    ))}
                   </div>
                 </div>
-              ))
-            ) : (
-              <div style={noAlertsStyle}>No critical alerts detected in the current landscape.</div>
-            )}
-          </div>
-        </div>
-
-        <div style={contentCardStyle}>
-          <div style={cardHeaderStyle}>Operational Node</div>
-          <div style={systemOverviewGridStyle}>
-            <div style={statusGroup}>
-              <div style={statusLineLabelStyle}>Core Engine</div>
-              <div style={statusPill(true)}>Healthy</div>
+              )}
             </div>
-            <StatusLine label="Endpoint" value={health?.status ?? "Verified"} />
-            <StatusLine label="Core DB" value={health?.database ?? "Operational"} />
-            <StatusLine label="Pilot Latency" value="12ms" />
+          </div>
+        </motion.div>
+      ))}
+    </div>
+  );
+}
+
+function SystemStatsBar() {
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 20, marginBottom: 32 }}>
+      <StatCard label="Autonomous Agents" value="24" sub="Synced & Active" color="#1a73e8" />
+      <StatCard label="Strategic Alignment" value="98%" sub="Target: 95%" color="#1e8e3e" />
+      <StatCard label="Risk Vectors" value="Low" sub="2 Minor Issues" color="#f9ab00" />
+      <StatCard label="Memory Load" value="4.2 GB" sub="Peak: 8.1 GB" color="#202124" />
+    </div>
+  );
+}
+
+function StatCard({ label, value, sub, color }: { label: string; value: string; sub: string; color: string }) {
+  return (
+    <div style={{ background: "#ffffff", padding: "20px 24px", borderRadius: 24, border: "1px solid rgba(0,0,0,0.05)", boxShadow: "0 4px 16px rgba(0,0,0,0.02)" }}>
+      <div style={{ fontSize: 10, fontWeight: 800, color: "#9aa0a6", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8 }}>{label}</div>
+      <div style={{ fontSize: 28, fontWeight: 900, color, letterSpacing: "-0.04em", marginBottom: 4, fontFamily: "Outfit" }}>{value}</div>
+      <div style={{ fontSize: 11, fontWeight: 600, color: "#5f6368" }}>{sub}</div>
+    </div>
+  );
+}
+
+function renderPulseDashboard(
+  projects: PulseProject[],
+  selectedPid: string | null,
+  timeline: PulseEvent[],
+  loading: boolean,
+  onSelect: (id: string) => void,
+  onSimulate: (id: string) => void,
+  health: Health | null,
+  connected: boolean,
+) {
+  const selectedProject = projects.find((p) => p.id === selectedPid);
+
+  return (
+    <div style={{ ...contentWrapStyle, padding: "24px 40px 40px" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 40, borderBottom: "1px solid #f1f3f4", paddingBottom: 24 }}>
+        <div>
+           <h1 style={{ fontSize: 42, fontWeight: 900, color: "#202124", letterSpacing: "-0.05em", marginBottom: 12, fontFamily: "Outfit" }}>Infrastructure Intelligence</h1>
+           <SystemHealthConsole health={health} connected={connected} />
+        </div>
+        
+        <div style={{ display: "flex", gap: 12 }}>
+          {loading && (
+            <motion.div 
+              initial={{ opacity: 0 }} 
+              animate={{ opacity: 1 }}
+              style={{ display: "flex", alignItems: "center", gap: 12, fontSize: 11, fontWeight: 700, color: "#1a73e8", background: "rgba(26,115,232,0.06)", padding: "10px 20px", borderRadius: 16 }}
+            >
+              <Loader2 size={14} className="spin" /> Syncing Ecosystem...
+            </motion.div>
+          )}
+          <button style={{ ...alertActionButton, background: "#202124", color: "#fff", padding: "10px 24px", borderRadius: 16 }}>
+             System Report
+          </button>
+        </div>
+      </div>
+
+      <SystemStatsBar />
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 420px", gap: 32, alignItems: "flex-start" }}>
+        {/* Main Console: Projects & High-Level Progress */}
+        <div style={{ gridColumn: "span 2", display: "grid", gap: 32 }}>
+          <div>
+            <div style={{ ...detailsLabelStyle, marginBottom: 20, fontSize: 12 }}>Organizational Vector Scorecards</div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 24 }}>
+              {projects.length ? (
+                projects.map((project) => (
+                  <ProjectScorecard
+                    key={project.id}
+                    project={project}
+                    isSelected={selectedPid === project.id}
+                    onClick={() => onSelect(project.id)}
+                  />
+                ))
+              ) : (
+                <div style={{ gridColumn: "span 2", padding: 80, textAlign: "center", background: "rgba(0,0,0,0.02)", borderRadius: 32, border: "2px dashed #e8eaed" }}>
+                  <Bot size={40} style={{ opacity: 0.1, marginBottom: 16 }} />
+                  <div style={{ fontSize: 16, color: "#5f6368", fontWeight: 600 }}>Awaiting intelligence telemetry...</div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
-        <div style={{ ...contentCardStyle, gridColumn: "span 3" }}>
-          <div style={cardHeaderStyle}>Inquiries</div>
-          <div style={quickActionsContainerStyle}>
-            {suggestions.map((suggestion) => (
-              <button
-                key={suggestion}
-                style={suggestionButtonStyle}
-                onClick={() => {
-                  setActiveTab("conversations");
-                  void handleSend(suggestion);
-                }}
-              >
-                {suggestion}
-              </button>
-            ))}
+        {/* Right Console: Live Feed & Strategic Timeline */}
+        <div style={{ display: "grid", gap: 32, position: "sticky", top: 24 }}>
+          <div style={{ ...contentCardStyle, background: "rgba(0,0,0,0.02)", border: "1px solid rgba(0,0,0,0.05)" }}>
+            <div style={{ ...cardHeaderStyle, borderBottom: "none", paddingBottom: 0 }}>
+              <div style={cardHeaderTitleStyle}>
+                <Clock size={18} color="#1a73e8" />
+                Strategic Timeline {selectedProject && `— ${selectedProject.name}`}
+              </div>
+              {selectedProject && (
+                <button
+                  style={{ background: "rgba(26,115,232,0.1)", color: "#1a73e8", border: "none", padding: "6px 14px", borderRadius: 12, fontSize: 11, fontWeight: 700, cursor: "pointer" }}
+                  onClick={() => onSimulate(selectedProject.id)}
+                >
+                  Simulate
+                </button>
+              )}
+            </div>
+            <div style={{ maxHeight: "calc(100vh - 400px)", overflowY: "auto", marginTop: 24 }} className="hide-scrollbar">
+              <PulseTimeline events={timeline} />
+            </div>
+          </div>
+
+          <div style={{ ...contentCardStyle, background: "#202124", color: "#fff" }}>
+            <div style={{ ...cardHeaderStyle, color: "#fff", borderBottom: "1px solid rgba(255,255,255,0.1)" }}>Consensus Intelligence</div>
+            <div style={{ padding: "20px 0" }}>
+              <p style={{ fontSize: 13, lineHeight: 1.6, color: "rgba(255,255,255,0.6)", marginBottom: 20 }}>
+                Predictive analysis suggests a 12% improvement in vendor compliance if SLA recalibration is prioritized.
+              </p>
+              <div style={{ display: "grid", gap: 12 }}>
+                <StatusBadge label="Market Drift" value="Negligible" color="#34a853" />
+                <StatusBadge label="SLA Volatility" value="Low" color="#34a853" />
+              </div>
+            </div>
           </div>
         </div>
       </div>
     </div>
   );
 }
+
+function StatusBadge({ label, value, color }: { label: string; value: string; color: string }) {
+  return (
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 14px", background: "rgba(255,255,255,0.06)", borderRadius: 12, border: "1px solid rgba(255,255,255,0.1)" }}>
+      <span style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.5)", textTransform: "uppercase" }}>{label}</span>
+      <span style={{ fontSize: 12, fontWeight: 800, color }}>{value}</span>
+    </div>
+  );
+}
+
+
 
 function renderKnowledge(
   kbText: string,
@@ -1699,7 +2242,7 @@ function MessageRow({ msg }: { msg: Message }) {
 
   if (isSystem) {
     return (
-      <div style={{ display: "flex", justifyContent: "center", margin: "8px 0" }}>
+      <div style={{ display: "flex", justifyContent: "center", margin: "12px 0" }}>
         <div style={systemMessageStyle}>{msg.text}</div>
       </div>
     );
@@ -1707,24 +2250,24 @@ function MessageRow({ msg }: { msg: Message }) {
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 10, scale: 0.98 }}
+      initial={{ opacity: 0, y: 20, scale: 0.98 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
-      transition={{ duration: 0.25, ease: "easeOut" }}
+      transition={{ type: "spring", damping: 20, stiffness: 100 }}
       style={{
         display: "flex",
         flexDirection: isUser ? "row-reverse" : "row",
         alignItems: "flex-start",
-        gap: 12,
-        margin: "6px 0",
+        gap: 16,
+        margin: "12px 0",
       }}
     >
       <div style={messageIconWrap(isUser, agentColor)}>
-        {isUser ? <User size={16} color="#fff" /> : <Bot size={16} color={agentColor} />}
+        {isUser ? <User size={18} color="#fff" /> : <Bot size={18} color={agentColor} />}
       </div>
 
-      <div style={{ display: "grid", gap: 4, maxWidth: "75%", minWidth: 0 }}>
+      <div style={{ display: "grid", gap: 6, maxWidth: "78%", minWidth: 0 }}>
         <div style={messageSenderStyle(isUser, agentColor)}>
-          {isUser ? "authorized operator" : (msg.agent ?? "intel engine")}
+          {isUser ? "Authorized Operator" : (msg.agent ?? "Intel Engine")}
         </div>
 
         <div style={messageBubbleStyle(isUser)}>
@@ -1732,7 +2275,7 @@ function MessageRow({ msg }: { msg: Message }) {
 
           {isGenericMessage && detailedData && Object.keys(detailedData).length > 0 && (
             <div style={dataPreviewStyle}>
-              <div style={dataHeader}>Results Payload</div>
+              <div style={dataHeader}>Intelligence Payload</div>
               <pre style={dataCodeStyle}>{JSON.stringify(detailedData, null, 2)}</pre>
             </div>
           )}
@@ -1740,10 +2283,12 @@ function MessageRow({ msg }: { msg: Message }) {
           {!isUser && msg.metadata && ((msg.metadata as any).agent_description || (msg.metadata as any).action_description) && (
             <div style={inlineRoutingStyle}>
               <div style={inlineRoutingHeader}>
-                <Target size={10} /> Intel Route
+                <Target size={10} /> Strategic Vector
               </div>
               <div style={inlineRoutingText}>
-                {String((msg.metadata as any).agent_description ?? "")} → {String((msg.metadata as any).action_description ?? "")}
+                {String((msg.metadata as any).agent_description ?? "System Core")}
+                <span style={{ margin: "0 6px", opacity: 0.5 }}>→</span>
+                {String((msg.metadata as any).action_description ?? "Direct Response")}
               </div>
             </div>
           )}
@@ -2038,7 +2583,7 @@ const mainStyle: CSSProperties = {
 const headerStyle: CSSProperties = {
   height: 64,
   background: "#ffffff",
-  padding: "0 32px",
+  padding: "0 40px",
   display: "flex",
   alignItems: "center",
   justifyContent: "space-between",
@@ -2115,9 +2660,8 @@ const messagesPaneStyle: CSSProperties = {
 };
 
 const composerOuterWrapStyle: CSSProperties = {
-  padding: "0 40px 24px",
-  background: "#ffffff",
-  borderTop: "1px solid #f8f9fa",
+  padding: "0 40px 32px",
+  background: "transparent",
   flexShrink: 0,
 };
 
@@ -2145,13 +2689,15 @@ const inlineSuggestionButtonStyle: CSSProperties = {
 const composerWrapStyle: CSSProperties = {
   display: "flex",
   alignItems: "center",
-  gap: 10,
-  padding: "6px 10px",
-  borderRadius: 20,
-  background: "#ffffff",
-  boxShadow: "0 8px 32px rgba(0,0,0,0.06)",
-  border: "1px solid #f1f3f4",
-  marginTop: 8,
+  gap: 12,
+  padding: "8px 12px",
+  borderRadius: 24,
+  background: "rgba(255, 255, 255, 0.7)",
+  backdropFilter: "blur(20px)",
+  boxShadow: "0 10px 40px rgba(0,0,0,0.08)",
+  border: "1px solid rgba(255,255,255,0.4)",
+  marginTop: 12,
+  transition: "all 0.3s ease",
 };
 
 const composerInputStyle: CSSProperties = {
@@ -2160,9 +2706,10 @@ const composerInputStyle: CSSProperties = {
   border: "none",
   outline: "none",
   background: "transparent",
-  padding: "10px 12px",
+  padding: "12px 16px",
   color: "#202124",
   fontSize: 15,
+  fontWeight: 500,
 };
 
 const composerActionWrap: CSSProperties = {
@@ -2183,17 +2730,18 @@ const iconCircleButton = (active: boolean): CSSProperties => ({
 });
 
 const sendButtonStyle: CSSProperties = {
-  width: 40,
-  height: 40,
-  borderRadius: 12,
+  width: 44,
+  height: 44,
+  borderRadius: 16,
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
-  background: "#1a73e8",
+  background: "linear-gradient(135deg, #1a73e8, #4285f4)",
   color: "#ffffff",
   border: "none",
   cursor: "pointer",
-  boxShadow: "0 4px 12px rgba(26,115,232,0.2)",
+  boxShadow: "0 8px 24px rgba(26,115,232,0.3)",
+  transition: "all 0.2s ease",
 };
 
 const detailsPanelStyle: CSSProperties = {
@@ -2667,15 +3215,15 @@ const inlineRoutingText: CSSProperties = {
 };
 
 const messageIconWrap = (isUser: boolean, agentColor: string): CSSProperties => ({
-  width: 34,
-  height: 34,
-  borderRadius: 10,
+  width: 40,
+  height: 40,
+  borderRadius: 14,
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
-  background: isUser ? "#1a73e8" : "#ffffff",
-  boxShadow: isUser ? "0 4px 10px rgba(26,115,232,0.2)" : "0 2px 6px rgba(0,0,0,0.04)",
-  border: isUser ? "none" : "1px solid #f1f3f4",
+  background: isUser ? "linear-gradient(135deg, #1a73e8, #4285f4)" : "#ffffff",
+  boxShadow: isUser ? "0 8px 20px rgba(26,115,232,0.25)" : "0 4px 12px rgba(0,0,0,0.04)",
+  border: isUser ? "none" : "1px solid rgba(0,0,0,0.05)",
   flexShrink: 0,
 });
 
@@ -2684,20 +3232,23 @@ const messageSenderStyle = (isUser: boolean, agentColor: string): CSSProperties 
   fontWeight: 800,
   color: isUser ? "#1a73e8" : agentColor,
   textTransform: "uppercase",
-  letterSpacing: "0.04em",
-  marginLeft: 2,
+  letterSpacing: "0.08em", // Premium tracking
+  marginLeft: 4,
+  fontFamily: "Outfit", // High-end font
 });
 
 const messageBubbleStyle = (isUser: boolean): CSSProperties => ({
-  borderRadius: isUser ? "24px 4px 24px 24px" : "4px 24px 24px 24px",
-  padding: "12px 18px",
-  background: isUser ? "linear-gradient(135deg, #1a73e8 0%, #1557b0 100%)" : "#ffffff",
+  borderRadius: isUser ? "24px 6px 24px 24px" : "6px 24px 24px 24px",
+  padding: "16px 24px",
+  background: isUser ? "linear-gradient(135deg, #1a73e8 0%, #174ea6 100%)" : "rgba(255, 255, 255, 0.8)",
+  backdropFilter: isUser ? "none" : "blur(12px)",
   color: isUser ? "#ffffff" : "#202124",
-  boxShadow: isUser ? "0 4px 14px rgba(26,115,232,0.18)" : "0 2px 10px rgba(0,0,0,0.03)",
-  border: isUser ? "none" : "1px solid #f1f3f4",
+  boxShadow: isUser ? "0 10px 25px rgba(26,115,232,0.2)" : "0 4px 15px rgba(0,0,0,0.02)",
+  border: isUser ? "1px solid rgba(255,255,255,0.1)" : "1px solid rgba(0,0,0,0.04)",
   position: "relative",
   fontSize: 15,
   lineHeight: 1.6,
+  fontFamily: "Inter, sans-serif",
 });
 
 const messageMetaStyle = (isUser: boolean): CSSProperties => ({
@@ -2792,8 +3343,11 @@ const fullPanePanel: CSSProperties = {
 };
 
 const contentWrapStyle: CSSProperties = {
-  padding: 32,
+  padding: 0,
   height: "100%",
+  width: "100%",
+  flex: 1,
+  overflowY: "auto",
 };
 
 const dashboardGridStyle: CSSProperties = {

@@ -138,7 +138,46 @@ _DDL = [
         status      TEXT    NOT NULL DEFAULT 'active',  -- active | completed | paused | cancelled
         started_at  TEXT,
         due_at      TEXT,
-        budget      REAL
+        budget      REAL,
+        created_at  TEXT    NOT NULL DEFAULT (datetime('now'))
+    )""",
+    """CREATE TABLE IF NOT EXISTS rfps (
+        id         TEXT    PRIMARY KEY,
+        project_id TEXT    NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        content    TEXT,
+        created_at TEXT    NOT NULL DEFAULT (datetime('now'))
+    )""",
+    """CREATE TABLE IF NOT EXISTS vendor_responses (
+        id            TEXT    PRIMARY KEY,
+        rfp_id        TEXT    NOT NULL REFERENCES rfps(id) ON DELETE CASCADE,
+        vendor_id     TEXT    NOT NULL REFERENCES vendors(id) ON DELETE CASCADE,
+        response_text TEXT,
+        score         REAL,
+        submitted_at  TEXT    NOT NULL DEFAULT (datetime('now'))
+    )""",
+    """CREATE TABLE IF NOT EXISTS sows (
+        id         TEXT    PRIMARY KEY,
+        project_id TEXT    NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        vendor_id  TEXT    NOT NULL REFERENCES vendors(id) ON DELETE CASCADE,
+        content    TEXT,
+        created_at TEXT    NOT NULL DEFAULT (datetime('now'))
+    )""",
+    """CREATE TABLE IF NOT EXISTS lifecycle_milestones (
+        id           TEXT    PRIMARY KEY,
+        sow_id       TEXT    NOT NULL REFERENCES sows(id) ON DELETE CASCADE,
+        title        TEXT    NOT NULL,
+        due_date     TEXT    NOT NULL,
+        status       TEXT    NOT NULL DEFAULT 'on-time',
+        completed_at TEXT
+    )""",
+    """CREATE TABLE IF NOT EXISTS daily_status (
+        id                INTEGER PRIMARY KEY AUTOINCREMENT,
+        milestone_id      TEXT    NOT NULL REFERENCES lifecycle_milestones(id) ON DELETE CASCADE,
+        task_description  TEXT    NOT NULL,
+        planned_date      TEXT    NOT NULL,
+        actual_completion TEXT,
+        status            TEXT    NOT NULL DEFAULT 'pending',
+        notes             TEXT
     )""",
     """CREATE TABLE IF NOT EXISTS milestones (
         id                    TEXT    PRIMARY KEY,

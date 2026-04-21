@@ -44,22 +44,51 @@ def get_minified_schema() -> str:
         
     return "\n".join(minified)
 
+def get_db_relationships() -> str:
+    """Summaries of key foreign key relationships for JOIN guidance."""
+    return """
+Key Relationships:
+- vendors.category_id -> service_categories.id
+- vendors.industry_id -> industries.id
+- vendor_services.vendor_id -> vendors.id
+- vendor_performance.vendor_id -> vendors.id
+- vendor_pricing.vendor_id -> vendors.id
+- contracts.vendor_id -> vendors.id
+- projects.vendor_id -> vendors.id
+- rfps.project_id -> projects.id
+- vendor_responses.rfp_id -> rfps.id
+- vendor_responses.vendor_id -> vendors.id
+- sows.project_id -> projects.id
+- sows.vendor_id -> vendors.id
+- lifecycle_milestones.sow_id -> sows.id
+- daily_status.milestone_id -> lifecycle_milestones.id
+- client_projects.id -> client_project_requirements.client_project_id
+- vendor_selections.client_project_id -> client_projects.id
+- vendor_selections.vendor_id -> vendors.id
+"""
+
+
 def get_schema_summary() -> str:
     """Provides a high-level summary of available tables and their purpose."""
     return """
-Available Databases:
-1. Vendor Management System:
-   - vendors: Core vendor details (name, tier, industry, country).
-   - vendor_services: Services/capabilities provided by vendors.
-   - vendor_performance: Historical metrics (SLA, quality, cost).
-   - contracts: Legal agreements and values.
-   - projects/milestones: Active work and deadlines.
-   - sla_definitions/metrics: Performance targets and actuals.
+Strategic Database Summary:
+1. Vendor Ecosystem:
+   - vendors: Master record. Use for 'contract_status' and 'tier'.
+   - vendor_services: List of capabilities. JOIN with vendors to filter by service type.
+   - vendor_performance: Critical metrics (quality_score, on_time_rate, communication_score).
+   - vendor_pricing: Rates and currencies for various services.
 
-2. Communication & Meetings:
-   - persons: Employee directory with roles and departments.
-   - meetings: Scheduled and past meetings.
-   - meeting_attendees: Who attended which meeting.
-   - meeting_action_items: Tasks assigned during meetings.
-   - communications: Log of emails/slack with sentiment analysis.
+2. Contractual & Compliance:
+   - contracts: Legal summaries, total_value, and expiration dates.
+   - sla_definitions/metrics: Performance targets and real-time compliance (recorded_at).
+
+3. Project Lifecycle (Strategic Pulse):
+   - projects: High-level work streams.
+   - rfps & vendor_responses: The procurement and bid process.
+   - sows & lifecycle_milestones: The detailed execution plan and current progress.
+   - daily_status: Tactical task-level progress (pending/completed).
+
+4. Operations:
+   - meetings: Context from transcripts and attendees.
+   - communications: Sentiment analysis and interaction logs.
 """

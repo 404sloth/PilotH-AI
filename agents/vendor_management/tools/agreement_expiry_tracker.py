@@ -29,6 +29,9 @@ class AgreementExpiryOutput(BaseModel):
     error: Optional[str] = None
 
 
+from langchain_core.runnables import RunnableConfig
+
+
 class AgreementExpiryTool(StructuredTool):
     """Track agreement expiry dates and renewal schedules."""
     
@@ -36,7 +39,11 @@ class AgreementExpiryTool(StructuredTool):
     description: str = "Track and monitor agreement expiry dates with renewal notifications"
     args_schema: type[BaseModel] = AgreementExpiryInput
     
-    def execute(self, validated_input: AgreementExpiryInput) -> Dict[str, Any]:
+    def execute(
+        self,
+        validated_input: AgreementExpiryInput,
+        config: Optional[RunnableConfig] = None,
+    ) -> Dict[str, Any]:
         """Execute the agreement expiry tracking."""
         try:
             if validated_input.action == "list_expiring":

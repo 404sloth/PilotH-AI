@@ -22,6 +22,9 @@ class TimezoneOutput(BaseModel):
     offset_hours: Optional[float] = None
 
 
+from langchain_core.runnables import RunnableConfig
+
+
 class TimezoneConverterTool(StructuredTool):
     """Convert a datetime string from one timezone to another."""
 
@@ -31,7 +34,9 @@ class TimezoneConverterTool(StructuredTool):
     )
     args_schema: type[BaseModel] = TimezoneInput
 
-    def execute(self, inp: TimezoneInput) -> TimezoneOutput:
+    def execute(
+        self, inp: TimezoneInput, config: Optional[RunnableConfig] = None
+    ) -> TimezoneOutput:
         try:
             from datetime import datetime
 

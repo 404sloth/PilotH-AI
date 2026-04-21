@@ -1,44 +1,28 @@
 :root {
-  color: #202124;
-  background: #f8f9fa;
-  font-family: "Google Sans", "Inter", system-ui, sans-serif;
-  font-synthesis: none;
+  --brand-primary: #1a73e8;
+  --brand-secondary: #4285f4;
+  --bg-main: #f8f9fa;
+  --bg-card: #ffffff;
+  --text-primary: #202124;
+  --text-secondary: #5f6368;
+  --accent-green: #1e8e3e;
+  --accent-red: #d93025;
+  --accent-amber: #f9ab00;
+  --glass-bg: rgba(255, 255, 255, 0.7);
+  --glass-border: rgba(255, 255, 255, 0.3);
+  
+  font-family: "Inter", "Outfit", system-ui, sans-serif;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
 }
 
 * {
   box-sizing: border-box;
 }
 
-html,
-body,
-#root {
+html, body, #root {
   margin: 0;
-  min-height: 100%;
-  width: 100%;
-}
-
-body {
-  min-height: 100vh;
-}
-
-button,
-input,
-textarea {
-  font: inherit;
-}
-
-button {
-  border: 0;
-  background: transparent;
-  cursor: pointer;
-}
-
-.app-shell {
-  display: flex;
-  min-height: 100vh;
+  height: 100%;
   width: 100%;
 }
 
@@ -46,7 +30,6 @@ button {
   scrollbar-width: none;
   -ms-overflow-style: none;
 }
-
 .hide-scrollbar::-webkit-scrollbar {
   display: none;
 }
@@ -55,11 +38,34 @@ button {
   animation: spin 1s linear infinite;
 }
 
+.pulse {
+  animation: pulse-ring 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+.heartbeat {
+  animation: heartbeat 1.5s ease-in-out infinite;
+}
+
 @keyframes spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes pulse-ring {
+  0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(26, 115, 232, 0.7); }
+  70% { transform: scale(1); box-shadow: 0 0 0 10px rgba(26, 115, 232, 0); }
+  100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(26, 115, 232, 0); }
+}
+
+@keyframes heartbeat {
+  0% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.1); opacity: 0.8; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+.glass-card {
+  background: var(--glass-bg);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--glass-border);
 }

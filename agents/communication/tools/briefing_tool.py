@@ -38,6 +38,9 @@ class BriefingOutput(BaseModel):
     disambiguation_warnings: List[str]  # raised when name collisions detected
 
 
+from langchain_core.runnables import RunnableConfig
+
+
 class ParticipantBriefingTool(StructuredTool):
     """
     Fetch enriched attendee profiles from the persons database.
@@ -51,7 +54,9 @@ class ParticipantBriefingTool(StructuredTool):
     )
     args_schema: type[BaseModel] = BriefingInput
 
-    def execute(self, inp: BriefingInput) -> BriefingOutput:
+    def execute(
+        self, inp: BriefingInput, config: Optional[RunnableConfig] = None
+    ) -> BriefingOutput:
         from integrations.data_warehouse.meeting_db import (
             get_person_by_email,
             find_persons,

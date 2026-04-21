@@ -34,6 +34,9 @@ class AgendaOutput(BaseModel):
     summary: str
 
 
+from langchain_core.runnables import RunnableConfig
+
+
 class AgendaGeneratorTool(StructuredTool):
     """Generate a structured meeting agenda using LLM based on meeting goals and context."""
 
@@ -43,7 +46,9 @@ class AgendaGeneratorTool(StructuredTool):
     )
     args_schema: type[BaseModel] = AgendaInput
 
-    def execute(self, inp: AgendaInput) -> AgendaOutput:
+    def execute(
+        self, inp: AgendaInput, config: Optional[RunnableConfig] = None
+    ) -> AgendaOutput:
         prompt = f"""You are a meeting facilitation expert. Create a structured agenda. Return ONLY valid JSON.
 
 Meeting: {inp.meeting_title}

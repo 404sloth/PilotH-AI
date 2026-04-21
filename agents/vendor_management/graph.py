@@ -8,36 +8,44 @@ Graph topology:
 """
 
 from __future__ import annotations
-
-from typing import Optional
-
+import logging
+from typing import Optional, Any
+from langchain_core.runnables import RunnableConfig
 from langgraph.graph import StateGraph, START, END
 from langgraph.checkpoint.memory import MemorySaver
+from langgraph.prebuilt import ToolNode
 
 from .schemas import VendorState
-from .nodes import (
-    fetch_vendor_node,
-    evaluate_node,
-    risk_detect_node,
-    summarize_node,
-)
-from .nodes.sla_analyzer import sla_analyzer_node
+from .nodes.brain import brain_node
+from .nodes.tool_node import action_node
+from .nodes.summarize import summarize_node
+
+logger = logging.getLogger(__name__)
 
 
-def _route_after_fetch(state: VendorState) -> str:
+class LoggingToolNode(ToolNode):
+    def invoke(self, input: Any, config: Optional[RunnableConfig] = None) -> Any:
+        # ToolNode expects a list of tool calls in the last message
+        last_msg = input["messages"][-1]
+        if hasattr(last_msg, "tool_calls") and last_msg.tool_calls:
+            for tc in last_msg.tool_calls:
+                logger.info(f" [TOOL CALL] {tc['name']} with args: {tc['args']}")
+
+        result = super().invoke(input, config)
+
+        # Log the result
+        if "messages" in result:
+            last_result = result["messages"][-1]
+            logger.info(f" [TOOL RESULT] {last_result.content[:1000]}...")
+
+        return result
+
+
+def _route_next(state: VendorState) -> str:
     """
-    Conditional routing after fetch_vendor:
-    - SEARCH_VENDORS: jump straight to summarize (discovery already complete)
-    - FIND_BEST: jump straight to evaluate to build ranking matrix
-    - Error:     jump to summarize to surface the error gracefully
-    - Default:   proceed through evaluate → sla_analyzer → risk_detect → summarize
+    Decide whether to execute tools or finish.
     """
-    if state.get("error"):
-        return "reflexion"
-    if state.get("action") == "search_vendors":
-        return "summarize"
-    # Even for find_best, we route to "evaluate" so it can build the ComparisonMatrix
-    return "evaluate"
+    return state.get("next_step", "summarize")
 
 
 def build_vendor_graph(
@@ -48,37 +56,36 @@ def build_vendor_graph(
 ) -> StateGraph:
     """
     Build and compile the Vendor Management LangGraph workflow.
+    Uses a dynamic reasoning loop (ReAct pattern).
     """
     builder = StateGraph(VendorState)
 
-    # Register nodes
-    from agents.reflexion_node import reflexion_node
-    builder.add_node("fetch_vendor", fetch_vendor_node)
-    builder.add_node("evaluate", evaluate_node)
-    builder.add_node("sla_analyzer", sla_analyzer_node)
-    builder.add_node("risk_detect", risk_detect_node)
-    builder.add_node("reflexion", reflexion_node)
+    # 1. Define Nodes
+    builder.add_node("brain", brain_node)
+
+    if tools:
+        builder.add_node("action", LoggingToolNode(tools))
+    else:
+        builder.add_node("action", action_node)
+
     builder.add_node("summarize", summarize_node)
+    # 2. Entry Point
+    builder.add_edge(START, "brain")
 
-    # Entry
-    builder.add_edge(START, "fetch_vendor")
-
-    # Conditional branch after fetch
+    # 3. Reasoning -> Tool or Summary
     builder.add_conditional_edges(
-        "fetch_vendor",
-        _route_after_fetch,
+        "brain",
+        _route_next,
         {
-            "evaluate": "evaluate",
+            "tools": "action",
             "summarize": "summarize",
-            "reflexion": "reflexion",
         },
     )
 
-    # Linear path
-    builder.add_edge("evaluate", "sla_analyzer")
-    builder.add_edge("sla_analyzer", "risk_detect")
-    builder.add_edge("risk_detect", "summarize")
-    builder.add_edge("reflexion", "summarize")
+    # 4. Tool Loop: Action -> Brain (reflect on results)
+    builder.add_edge("action", "brain")
+
+    # 5. Terminate
     builder.add_edge("summarize", END)
 
     if checkpointer:

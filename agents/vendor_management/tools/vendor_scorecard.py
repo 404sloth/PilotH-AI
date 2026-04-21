@@ -34,6 +34,9 @@ class VendorScorecardOutput(BaseModel):
     summary: str
 
 
+from langchain_core.runnables import RunnableConfig
+
+
 class VendorScorecardTool(StructuredTool):
     """
     Retrieve a full enriched scorecard for a vendor — aggregates perf, SLA, milestones, contract.
@@ -46,7 +49,11 @@ class VendorScorecardTool(StructuredTool):
     )
     args_schema: type[BaseModel] = VendorScorecardInput
 
-    def execute(self, validated_input: VendorScorecardInput) -> VendorScorecardOutput:
+    def execute(
+        self,
+        validated_input: VendorScorecardInput,
+        config: Optional[RunnableConfig] = None,
+    ) -> VendorScorecardOutput:
         from integrations.data_warehouse.vendor_db import get_vendor_scorecard
 
         data = get_vendor_scorecard(validated_input.vendor_id)

@@ -18,6 +18,7 @@ from memory.session_store import get_session_store
 from memory.global_context import get_global_context
 from llm.token_counter import get_token_counter
 from llm.model_factory import ConversationManager, Conversation
+from orchestrator.schemas import OrchestratorResponse
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +40,7 @@ class OrchestratorController:
         self.global_ctx = get_global_context()
         self.token_counter = get_token_counter()
 
-    def handle(
+    async def handle(
         self,
         message: str,
         session_id: Optional[str] = None,
@@ -47,171 +48,166 @@ class OrchestratorController:
         agent_hint: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
-        Process a user message end-to-end with advanced intent parsing and conversation storage.
+        Process a user message and return a formatted blocking response.
+        Compatible with standard POST /run routes.
         """
-        from observability.logger import get_logger
+        from graphs.orchestration_graph import build_orchestration_graph, OrchestrationState
         from observability.pii_sanitizer import PIISanitizer
-
-        session_id = session_id or str(uuid.uuid4())
-        session = self.session_store.get_or_create(session_id)
-        runtime_context = dict(context or {})
-        user_message_metadata = dict(runtime_context.pop("user_message_metadata", {}) or {})
-        if agent_hint:
-            user_message_metadata.setdefault("agent_hint", agent_hint)
-
-        # Get or create conversation
-        conversation_id = runtime_context.get("conversation_id")
-        if conversation_id:
-            conversation = ConversationManager.get_conversation(conversation_id)
-            if not conversation:
-                conversation = Conversation.create_new(
-                    {"session_id": session_id},
-                    conversation_id=conversation_id,
-                )
-        else:
-            conversation = Conversation.create_new({"session_id": session_id})
-            conversation_id = conversation.id
-
-        # ── 🔍 LangSmith Tracing Initialization ───────────────────────────────
-        callbacks = []
-        if os.getenv("LANGCHAIN_TRACING_V2") == "true" or self.config.langchain_tracing_v2:
-            try:
-                from langchain.callbacks.tracers.langsmith import LangSmithTracer
-                project = os.getenv("LANGCHAIN_PROJECT", "ai-agents-testing")
-                callbacks.append(LangSmithTracer(project_name=project))
-            except (ImportError, Exception):
-                pass
-
-        runnable_config = RunnableConfig(
-            callbacks=callbacks,
-            tags=["orchestrator", session_id],
-            metadata={"session_id": session_id, "conversation_id": conversation_id},
-        )
-
-        otel_logger = get_logger("orchestrator")
-
-        # Add user message to conversation
-        conversation.add_message(
-            "user",
-            message,
-            {
-                "session_id": session_id,
-                **user_message_metadata,
-            },
-        )
-
-        # Sanitize message before logging
-        safe_message = PIISanitizer.sanitize_string(message)
-        session.add_message("user", message)
-
-        # 1. Parse intent with advanced parser (limit history to last 5 turns + summary)
-        history = session.get_conversation_history(last_n=20) 
         
-        # If history is long, summarize older parts
-        if len(history) > 10:
-            session.summary = self._summarize_history(history[:-10], session.summary, config=runnable_config)
-            # Keep only the last 10 messages (5 turns)
-            trimmed_history = history[-10:]
-            # Inject summary as the "6th" conversation item
-            if session.summary:
-                trimmed_history.insert(0, {"role": "system", "content": f"Context Summary of older conversations: {session.summary}"})
-        else:
-            trimmed_history = history
+        session_id = session_id or str(uuid.uuid4())
+        runtime_context = dict(context or {})
+        
+        # 1. Initialize Graph & State
+        graph = build_orchestration_graph()
+        initial_state: OrchestrationState = {
+            "session_id": session_id,
+            "user_message": message,
+            "context": PIISanitizer.sanitize_dict(runtime_context),
+            "messages": [],
+            "agent_results": {},
+            "task_index": 0,
+            "trace": []
+        }
 
-        from orchestrator.intent_parser import IntentParser, get_tool_description, TOOL_REGISTRY
-
-        intent = IntentParser(self.config).parse(
-            message,
-            context=PIISanitizer.sanitize_dict(runtime_context),
-            conversation_history=trimmed_history,
-            agent_hint=agent_hint,
-            config=runnable_config,
+        config = RunnableConfig(
+            callbacks=[], 
+            tags=["orchestrator", "blocking", session_id],
+            metadata={"session_id": session_id},
+            recursion_limit=50
         )
 
-        otel_logger.info(
-            "Intent parsed",
-            agent="orchestrator",
-            action="intent_parsing",
-            data={
-                "agent": intent.get("agent"),
-                "action": intent.get("action"),
-                "confidence": intent.get("confidence"),
-            }
-        )
-
-        logger.info(
-            "[%s] Intent: %s → agent=%s (confidence: %.2f)",
-            session_id,
-            intent.get("action"),
-            intent.get("agent"),
-            intent.get("confidence", 0),
-        )
-
-        if intent.get("agent") == "system" and intent.get("action") == "conversational":
-            assistant_response = self._generate_dynamic_help(message, TOOL_REGISTRY)
-            result = {"response": assistant_response}
-            formatted_result = {"response": assistant_response, "data": {}}
-        else:
-            # 2. Route to agent
-            from orchestrator.agent_router import AgentRouter
-
-            result = AgentRouter().route(
-                agent_name=intent["agent"],
-                action=intent["action"],
-                payload={**intent.get("params", {}), **runtime_context},
-                session_id=session_id,
-                config=runnable_config,
-            )
-
-            # 3. Format and filter final output using LLM for intelligent layout
-            formatted_result = self._format_final_output_with_llm(result, intent, message, config=runnable_config)
-
-        # 4. Save to session and global memory
-        assistant_response = formatted_result.get("response", "")
-        session.add_message("assistant", assistant_response)
-
-        # Add assistant response to conversation
-        conversation.add_message("assistant", assistant_response, {
-            "agent": intent.get("agent"),
-            "action": intent.get("action"),
-            "confidence": intent.get("confidence"),
-            "session_id": session_id
-        })
-
-        self.global_ctx.append_to_list(
-            f"session:{session_id}:results",
-            {
-                "intent": intent,
-                "result_keys": list(result.keys()),
-                "confidence": intent.get("confidence"),
-            },
-            agent="orchestrator",
-            session_id=session_id,
+        # 2. Run graph to completion
+        final_state = await graph.ainvoke(initial_state, config=config)
+        
+        # 3. Format Output
+        intent = final_state.get("intent", {})
+        formatted_result = self._format_final_output_with_llm(
+            final_state.get("agent_results", {}), 
+            intent, 
+            message, 
+            config=config
         )
 
         return {
-            "session_id": session_id,
-            "conversation_id": conversation_id,
-            "response": assistant_response,
+            "response": formatted_result.get("response", ""),
             "data": formatted_result.get("data", {}),
+            "suggestions": formatted_result.get("suggestions", []),
+            "conversation_id": session_id,
+            "session_id": session_id,
             "metadata": {
-                "original_query": message,
-                "sanitized_query": safe_message,
-                "agent": intent.get("agent"),
-                "action": intent.get("action"),
-                "agent_description": TOOL_REGISTRY.get(intent.get("agent"), {}).get("agent_description"),
-                "action_description": get_tool_description(intent.get("agent"), intent.get("action")),
-                "tool_descriptions": {
-                    action_name: action_info.get("description", "")
-                    for action_name, action_info in TOOL_REGISTRY.get(intent.get("agent"), {}).get("actions", {}).items()
-                },
-                "intent_reasoning": intent.get("reasoning"),
-                "params": intent.get("params", {}),
-                "confidence": intent.get("confidence"),
-                "token_usage": self.token_counter.totals(),
-                "suggestions": formatted_result.get("suggestions", []),
+                "agent": intent.get("agent", "unknown"),
+                "action": intent.get("action", "unknown"),
+                "intent_reasoning": intent.get("reasoning", ""),
+                "final_response": final_state.get("final_response")
             }
         }
+
+    async def handle_stream(
+        self,
+        message: str,
+        session_id: Optional[str] = None,
+        context: Optional[Dict[str, Any]] = None,
+        agent_hint: Optional[str] = None,
+    ):
+        """
+        Process a user message using astream_events to provide real-time updates.
+        Yields:
+            TraceEvent | OrchestratorResponse
+        """
+        from observability.logger import get_logger
+        from observability.pii_sanitizer import PIISanitizer
+        from graphs.orchestration_graph import build_orchestration_graph, OrchestrationState
+        from orchestrator.schemas import TraceEvent, OrchestratorResponse
+        import uuid
+
+        session_id = session_id or str(uuid.uuid4())
+        runtime_context = dict(context or {})
+        
+        # 1. Initialize Graph & State
+        graph = build_orchestration_graph()
+        initial_state: OrchestrationState = {
+            "session_id": session_id,
+            "user_message": message,
+            "context": PIISanitizer.sanitize_dict(runtime_context),
+            "messages": [],
+            "agent_results": {},
+            "task_index": 0,
+            "trace": []
+        }
+
+        # 🔍 LangSmith Configuration
+        config = RunnableConfig(
+            callbacks=[], 
+            tags=["orchestrator", session_id],
+            metadata={"session_id": session_id},
+            recursion_limit=50
+        )
+
+        # 2. Iterate over the event stream
+        async for event in graph.astream_events(initial_state, config=config, version="v2"):
+            kind = event["event"]
+            name = event["name"]
+            
+            # Map LangGraph events to TraceEvents
+            if kind == "on_node_start":
+                # Filter out system nodes if too noisy
+                if name in ("START", "END", "__start__", "__end__"): continue
+                
+                yield TraceEvent(
+                    type="agent" if "agent" in name.lower() else "status",
+                    name=name.replace("_", " ").title(),
+                    status="running",
+                    details=f"Executing {name}..."
+                )
+            
+            elif kind == "on_tool_start":
+                yield TraceEvent(
+                    type="tool",
+                    name=name.replace("_", " ").title(),
+                    status="running",
+                    details=f"Calling tool: {name}"
+                )
+            
+            elif kind == "on_tool_end":
+                yield TraceEvent(
+                    type="tool",
+                    name=name.replace("_", " ").title(),
+                    status="completed",
+                    details=f"Tool {name} finished."
+                )
+
+            elif kind == "on_node_end":
+                if name in ("START", "END", "__start__", "__end__"): continue
+                yield TraceEvent(
+                    type="agent" if "agent" in name.lower() else "status",
+                    name=name.replace("_", " ").title(),
+                    status="completed"
+                )
+
+        # 3. Final Result Gathering
+        # Run one final invoke to get the completed state (or use values from stream if preferred)
+        # Note: astream_events yields values as well, but for simplicity here we re-invoke or take last
+        final_state = await graph.ainvoke(initial_state, config=config)
+        
+        # 4. Format Output (Re-using logic from original handle)
+        intent = final_state.get("intent", {})
+        formatted_result = self._format_final_output_with_llm(
+            final_state.get("agent_results", {}), 
+            intent, 
+            message, 
+            config=config
+        )
+
+        yield OrchestratorResponse(
+            response=formatted_result.get("response", ""),
+            agent=intent.get("agent", "unknown"),
+            action=intent.get("action", "unknown"),
+            thought=final_state.get("final_response"), # Use compiled response or thoughts
+            intent_reasoning=intent.get("reasoning", ""),
+            data=formatted_result.get("data", {}),
+            suggestions=formatted_result.get("suggestions", []),
+            trace=[] # Final state could include full trace here
+        )
 
     def _summarize_history(self, older_messages: List[Dict[str, Any]], existing_summary: Optional[str] = None, config: Optional[RunnableConfig] = None) -> str:
         """Create a compact summary of older conversation history."""

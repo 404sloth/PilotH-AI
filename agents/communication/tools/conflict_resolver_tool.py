@@ -29,6 +29,9 @@ class ConflictResolverOutput(BaseModel):
     message: str
 
 
+from langchain_core.runnables import RunnableConfig
+
+
 class ConflictResolverTool(StructuredTool):
     """
     Check for scheduling conflicts among attendees and suggest alternative slots.
@@ -42,7 +45,9 @@ class ConflictResolverTool(StructuredTool):
     )
     args_schema: type[BaseModel] = ConflictResolverInput
 
-    def execute(self, inp: ConflictResolverInput) -> ConflictResolverOutput:
+    def execute(
+        self, inp: ConflictResolverInput, config: Optional[RunnableConfig] = None
+    ) -> ConflictResolverOutput:
         from integrations.data_warehouse.meeting_db import (
             get_person_by_email,
             get_busy_blocks,

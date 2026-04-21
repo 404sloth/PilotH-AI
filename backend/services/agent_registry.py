@@ -8,22 +8,17 @@ from __future__ import annotations
 import logging
 from typing import Dict, Optional
 from config.settings import Settings
-from agents.registry import ToolRegistry
+from agents.registry import ToolRegistry, registry
 from human_loop.manager import HITLManager
 
 logger = logging.getLogger(__name__)
 
 # Module-level singletons (initialised once per process)
-_tool_registry: Optional[ToolRegistry] = None
 _agents: Dict[str, object] = {}
 
 
 def get_tool_registry() -> ToolRegistry:
-    global _tool_registry
-    if _tool_registry is None:
-        _tool_registry = ToolRegistry()
-    return _tool_registry
-
+    return registry
 
 def initialise_agents(config: Settings) -> Dict[str, object]:
     """

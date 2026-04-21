@@ -60,6 +60,9 @@ class VendorSearchOutput(BaseModel):
     vendors: List[VendorRecord] = Field(default_factory=list)
 
 
+from langchain_core.runnables import RunnableConfig
+
+
 class VendorSearchTool(StructuredTool):
     """Search the vendor registry. Returns non-sensitive profile data for matching vendors."""
 
@@ -70,7 +73,11 @@ class VendorSearchTool(StructuredTool):
     )
     args_schema: type[BaseModel] = VendorSearchInput
 
-    def execute(self, validated_input: VendorSearchInput) -> VendorSearchOutput:
+    def execute(
+        self,
+        validated_input: VendorSearchInput,
+        config: Optional[RunnableConfig] = None,
+    ) -> VendorSearchOutput:
         from integrations.data_warehouse.vendor_db import search_vendors
 
         rows = search_vendors(

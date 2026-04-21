@@ -67,7 +67,7 @@ def list_agents():
 @router.post(
     "/run", response_model=AgentRunResponse, summary="Auto-route natural language prompts"
 )
-def run_auto_agent(request: AgentRunRequest):
+async def run_auto_agent(request: AgentRunRequest):
     """
     Automatically route natural language prompts to the appropriate agent.
     
@@ -84,7 +84,7 @@ def run_auto_agent(request: AgentRunRequest):
         if request.conversation_id:
             context["conversation_id"] = request.conversation_id
 
-        result = controller.handle(
+        result = await controller.handle(
             message=request.prompt,
             context=context,
             agent_hint=request.agent_hint if request.agent_hint else None,
@@ -107,7 +107,7 @@ def run_auto_agent(request: AgentRunRequest):
 @router.post(
     "/{agent_name}/run", response_model=AgentRunResponse, summary="Run specific agent with natural language"
 )
-def run_agent(agent_name: str, request: AgentRunRequest):
+async def run_agent(agent_name: str, request: AgentRunRequest):
     """
     Execute a named agent with a natural language prompt.
     
@@ -124,7 +124,7 @@ def run_agent(agent_name: str, request: AgentRunRequest):
         if request.conversation_id:
             context["conversation_id"] = request.conversation_id
 
-        result = controller.handle(
+        result = await controller.handle(
             message=request.prompt,
             context=context,
             agent_hint=agent_name,  # Use the specified agent as hint

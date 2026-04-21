@@ -5,8 +5,10 @@ Pydantic schemas and LangGraph state for the Vendor Management Agent.
 from __future__ import annotations
 
 from enum import Enum
-from typing import Any, Dict, List, Optional, TypedDict
+from typing import Any, Dict, List, Optional, TypedDict, Annotated, Union
 from pydantic import BaseModel, Field
+from langgraph.graph.message import add_messages
+from langchain_core.messages import BaseMessage
 
 
 # ---------------------------------------------------------------------------
@@ -49,7 +51,7 @@ class VendorManagementInput(BaseModel):
         - vendor_name or vendor_id is mandatory
     """
 
-    action: VendorAction = Field(
+    action: Union[VendorAction, str] = Field(
         default=VendorAction.FULL_ASSESSMENT, description="What the agent should do"
     )
 
@@ -88,12 +90,17 @@ class VendorManagementInput(BaseModel):
     )
     top_n: int = Field(5, ge=1, le=20)
 
+    # --- Multi-Agent Context
+    context_history: Dict[str, Any] = Field(default_factory=dict, description="Results from previous agents in the chain")
+    step_reasoning: Optional[str] = Field(None, description="Instruction from the planner for this specific step")
+
     # --- Other
     contract_reference: Optional[str] = Field(None)
     project_id: Optional[str] = Field(None)
 
     class Config:
         use_enum_values = True
+        extra = "allow"
 
 
 # ---------------------------------------------------------------------------
@@ -108,8 +115,15 @@ class RiskItem(BaseModel):
     mitigation: Optional[str]
 
 
-class VendorManagementOutput(BaseModel):
-    action_performed: str
+from orchestrator.schemas import AgentOutput
+
+
+class VendorManagementOutput(AgentOutput):
+    """
+    Output schema for Vendor Management Agent.
+    Inherits standard fields (action_performed, llm_summary, thought, data, suggestions, requires_human_review, error).
+    """
+
     vendor_id: Optional[str] = None
     vendor_name: Optional[str] = None
 
@@ -130,11 +144,6 @@ class VendorManagementOutput(BaseModel):
     risks: List[RiskItem] = Field(default_factory=list)
     recommendations: List[str] = Field(default_factory=list)
 
-    # Meta
-    llm_summary: Optional[str] = None
-    requires_human_review: bool = False
-    error: Optional[str] = None
-
     class Config:
         use_enum_values = True
 
@@ -144,11 +153,25 @@ class VendorManagementOutput(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-class VendorState(TypedDict, total=False):
-    # ---- Input fields ---
-    action: str
-    vendor_name: Optional[str]
+class VendorState(TypedDict):
+    """
+    State schema for the Vendor Management workflow.
+    Enhanced with thinking and dynamic tool-call support.
+    """
+
+    # --- Core Input ---
+    action: str  # find_best | evaluate | monitor_sla | etc.
+    messages: Annotated[List[BaseMessage], add_messages]
+    context_history: Dict[str, Any]  # Map of prev_agent -> result
+    step_reasoning: Optional[str]
+
+    # --- Strategic Context (Reasoning) ---
+    thought: Optional[str]  # The <think> block content
+    next_step: Optional[str]  # routing hint
+
+    # --- Entities ---
     vendor_id: Optional[str]
+    vendor_name: Optional[str]
     service_required: Optional[str]
     industry: Optional[str]
     budget_monthly: Optional[float]
@@ -183,6 +206,3 @@ class VendorState(TypedDict, total=False):
     llm_summary: Optional[str]
     requires_human_review: bool
     error: Optional[str]
-
-    # ---- Message history for LLM context ---
-    messages: List[Any]

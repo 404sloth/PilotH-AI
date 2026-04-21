@@ -56,6 +56,9 @@ _NEGATIVE = [
 ]
 
 
+from langchain_core.runnables import RunnableConfig
+
+
 class SentimentAnalysisTool(StructuredTool):
     """
     Analyse sentiment of text segments. Uses LLM if available, else rule-based.
@@ -67,7 +70,9 @@ class SentimentAnalysisTool(StructuredTool):
     )
     args_schema: type[BaseModel] = SentimentInput
 
-    def execute(self, inp: SentimentInput) -> SentimentOutput:
+    def execute(
+        self, inp: SentimentInput, config: Optional[RunnableConfig] = None
+    ) -> SentimentOutput:
         records = [self._analyse_single(t) for t in inp.texts]
         avg = sum(r.score for r in records) / len(records) if records else 0.0
         label = "positive" if avg > 0.2 else ("negative" if avg < -0.2 else "neutral")

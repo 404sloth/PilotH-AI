@@ -44,6 +44,9 @@ class MilestoneTrackerOutput(BaseModel):
     recommendations: List[str]
 
 
+from langchain_core.runnables import RunnableConfig
+
+
 class MilestoneTrackerTool(StructuredTool):
     """
     Retrieve and analyse project milestones for a vendor.
@@ -57,7 +60,11 @@ class MilestoneTrackerTool(StructuredTool):
     )
     args_schema: type[BaseModel] = MilestoneTrackerInput
 
-    def execute(self, validated_input: MilestoneTrackerInput) -> MilestoneTrackerOutput:
+    def execute(
+        self,
+        validated_input: MilestoneTrackerInput,
+        config: Optional[RunnableConfig] = None,
+    ) -> MilestoneTrackerOutput:
         from integrations.data_warehouse.vendor_db import get_milestones
 
         rows = get_milestones(

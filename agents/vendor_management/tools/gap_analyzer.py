@@ -31,6 +31,9 @@ class GapAnalysisOutput(BaseModel):
     overall_suggestions: List[str]
     error: Optional[str] = None
 
+from langchain_core.runnables import RunnableConfig
+
+
 class GapAnalyzerTool(StructuredTool):
     """Detect gaps between project requirements and vendor capabilities."""
 
@@ -41,7 +44,11 @@ class GapAnalyzerTool(StructuredTool):
     )
     args_schema: type[BaseModel] = GapAnalysisInput
 
-    def execute(self, validated_input: GapAnalysisInput) -> GapAnalysisOutput:
+    def execute(
+        self,
+        validated_input: GapAnalysisInput,
+        config: Optional[RunnableConfig] = None,
+    ) -> GapAnalysisOutput:
         from integrations.data_warehouse.vendor_db import get_client_project, get_vendor_by_id
 
         reqs = validated_input.requirements

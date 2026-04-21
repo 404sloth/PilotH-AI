@@ -28,6 +28,9 @@ class SlackOutput(BaseModel):
     mock: bool = True
 
 
+from langchain_core.runnables import RunnableConfig
+
+
 class SlackNotifierTool(StructuredTool):
     """
     Send a Slack notification.
@@ -41,7 +44,9 @@ class SlackNotifierTool(StructuredTool):
     )
     args_schema: type[BaseModel] = SlackInput
 
-    def execute(self, inp: SlackInput) -> SlackOutput:
+    def execute(
+        self, inp: SlackInput, config: Optional[RunnableConfig] = None
+    ) -> SlackOutput:
         mention_str = " ".join(f"<@{h.lstrip('@')}>" for h in inp.mentions)
         full_msg = f"{mention_str} {inp.message}".strip()
 

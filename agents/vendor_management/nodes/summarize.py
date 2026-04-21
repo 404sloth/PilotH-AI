@@ -14,24 +14,42 @@ from langchain_core.messages import HumanMessage, AIMessage
 from langchain_core.runnables import RunnableConfig
 from agents.vendor_management.schemas import VendorState
 
-logger = logging.getLogger(__name__)
-
+import re
 
 def summarize_node(state: VendorState, config: RunnableConfig) -> Dict[str, Any]:
     """
-    Generate LLM-powered executive summary and prioritised recommendations.
-    Falls back to rule-based summary if LLM unavailable.
+    Generate the final executive output, filtering out internal <think> tracks.
     """
-    action = state.get("action", "full_assessment")
-
-    if action == "search_vendors":
-        return _summarize_vendor_search(state, config)
-    if action == "find_best":
-        return _summarize_find_best(state, config)
-    if action == "summarize_contract":
-        return _summarize_contract(state, config)
+    from llm.model_factory import get_llm
+    
+    action = state.get("action")
+    
+    # Route to specialized summarizers if applicable
+    if action == "SEARCH_VENDORS":
+        res = _summarize_vendor_search(state, config)
+    elif action == "FIND_BEST":
+        res = _summarize_find_best(state, config)
+    elif action == "FULL_ASSESSMENT":
+        res = _summarize_assessment(state, config)
+    elif action == "SUMMARIZE_CONTRACT":
+        res = _summarize_contract(state, config)
     else:
-        return _summarize_assessment(state, config)
+        # Fallback synthesis
+        last_message = state["messages"][-1]
+        raw_content = last_message.content if hasattr(last_message, "content") else str(last_message)
+        clean_summary = re.sub(r"<think>.*?</think>", "", raw_content, flags=re.DOTALL).strip()
+        
+        if not clean_summary:
+            llm = get_llm(temperature=0.4)
+            history = "\n".join([f"{m.type}: {m.content}" for m in state["messages"][-5:]])
+            prompt = f"Synthesize a final executive answer based on this interaction history:\n\n{history}"
+            clean_summary = llm.invoke([HumanMessage(content=prompt)], config=config).content.strip()
+        
+        res = {"llm_summary": clean_summary, "messages": [AIMessage(content=clean_summary)]}
+
+    # Ensure thought is propagated
+    res["thought"] = state.get("thought")
+    return res
 
 
 # ---------------------------------------------------------------------------

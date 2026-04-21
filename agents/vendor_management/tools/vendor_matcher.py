@@ -87,6 +87,9 @@ class VendorMatcherOutput(BaseModel):
     top_recommendation: Optional[str] = None  # vendor_id of #1
 
 
+from langchain_core.runnables import RunnableConfig
+
+
 class VendorMatcherTool(StructuredTool):
     """
     Given a service type and project requirements, rank all capable vendors by fit score.
@@ -108,7 +111,11 @@ class VendorMatcherTool(StructuredTool):
     )
     args_schema: type[BaseModel] = VendorMatcherInput
 
-    def execute(self, validated_input: VendorMatcherInput) -> VendorMatcherOutput:
+    def execute(
+        self,
+        validated_input: VendorMatcherInput,
+        config: Optional[RunnableConfig] = None,
+    ) -> VendorMatcherOutput:
         """
         Execute vendor matching with historical performance integration.
         

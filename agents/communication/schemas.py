@@ -41,6 +41,10 @@ class MeetingRequestInput(BaseModel):
     )
     organizer_email: Optional[str] = Field(None)
     location: Optional[str] = Field(None)
+    
+    # --- Multi-Agent Context
+    context_history: Dict[str, Any] = Field(default_factory=dict, description="Results from previous agents in the chain")
+    step_reasoning: Optional[str] = Field(None, description="Instruction from the planner for this specific step")
 
     class Config:
         use_enum_values = True
@@ -53,19 +57,19 @@ class ActionItem(BaseModel):
     priority: str = "medium"
 
 
-class MeetingAgentOutput(BaseModel):
-    status: str = "success"
-    action: str
+from orchestrator.schemas import AgentOutput
+
+
+class MeetingAgentOutput(AgentOutput):
+    """
+    Standardized output for the Communication Agent.
+    Inherits action_performed, llm_summary, thought, etc.
+    """
     meeting_id: Optional[str] = None
-    result: Dict[str, Any] = Field(default_factory=dict)
-    summary: Optional[str] = None
     agenda: List[str] = Field(default_factory=list)
     action_items: List[ActionItem] = Field(default_factory=list)
     proposed_slots: List[str] = Field(default_factory=list)
     calendar_link: Optional[str] = None
-    requires_approval: bool = False
-    message: Optional[str] = None
-    error: Optional[str] = None
 
 
 # ── LangGraph internal state ──────────────────────────────────────────────────
@@ -85,6 +89,8 @@ class MeetingState(TypedDict, total=False):
     organizer_email: Optional[str]
     location: Optional[str]
     session_id: Optional[str]
+    context_history: Dict[str, Any]  # Map of prev_agent -> result
+    step_reasoning: Optional[str]
 
     # Resolved people (from persons table, disambiguated)
     resolved_participants: List[Dict[str, Any]]

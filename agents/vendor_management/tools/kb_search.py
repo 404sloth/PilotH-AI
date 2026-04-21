@@ -27,6 +27,9 @@ class KnowledgeBaseSearchInput(BaseModel):
     limit: int = Field(5, ge=1, le=20, description="Maximum number of results")
 
 
+from langchain_core.runnables import RunnableConfig
+
+
 class KnowledgeBaseSearchTool(StructuredTool):
     """Search knowledge base for relevant documents and information."""
     
@@ -34,7 +37,11 @@ class KnowledgeBaseSearchTool(StructuredTool):
     description: str = "Search and retrieve relevant documents from the knowledge base using semantic search"
     args_schema: type[BaseModel] = KnowledgeBaseSearchInput
     
-    def execute(self, validated_input: KnowledgeBaseSearchInput) -> Dict[str, Any]:
+    def execute(
+        self,
+        validated_input: KnowledgeBaseSearchInput,
+        config: Optional[RunnableConfig] = None,
+    ) -> Dict[str, Any]:
         """Execute knowledge base search."""
         try:
             from knowledge_base.vector_store import get_vector_store

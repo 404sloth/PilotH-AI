@@ -28,6 +28,9 @@ class VendorFinancialInput(BaseModel):
     time_period_months: int = Field(12, ge=1, le=36, description="Time period for analysis in months")
 
 
+from langchain_core.runnables import RunnableConfig
+
+
 class VendorFinancialTool(StructuredTool):
     """Analyze vendor spending and identify optimization opportunities."""
     
@@ -35,7 +38,11 @@ class VendorFinancialTool(StructuredTool):
     description: str = "Analyze spending patterns, budgets, and identify cost optimization opportunities"
     args_schema: type[BaseModel] = VendorFinancialInput
     
-    def execute(self, validated_input: VendorFinancialInput) -> Dict[str, Any]:
+    def execute(
+        self,
+        validated_input: VendorFinancialInput,
+        config: Optional[RunnableConfig] = None,
+    ) -> Dict[str, Any]:
         """Execute financial analysis."""
         try:
             result = {

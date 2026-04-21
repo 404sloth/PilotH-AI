@@ -36,19 +36,20 @@ class CalendarCreateOutput(BaseModel):
 
 class GoogleCalendarCreateTool(StructuredTool):
     """
-    Create a calendar event for a list of attendees.
-    Mock: stores in SQLite calendar_events; stub ready for Google Calendar API.
-    Sets has_external=True if any attendee email is outside company domain.
+    Create a Google Calendar event.
+    Mock: logs the event and returns success.
     """
 
     name: str = "google_calendar_create"
     description: str = (
-        "Create a calendar event and send invites to all attendees. "
-        "Returns event ID and calendar link. Flags external attendees for HITL approval."
+        "Schedule a new meeting in Google Calendar. "
+        "Requires title, start/end times (ISO), and attendee emails."
     )
     args_schema: type[BaseModel] = CalendarCreateInput
 
-    def execute(self, inp: CalendarCreateInput) -> CalendarCreateOutput:
+    def execute(
+        self, inp: CalendarCreateInput, config: Optional[RunnableConfig] = None
+    ) -> CalendarCreateOutput:
         from integrations.data_warehouse.meeting_db import (
             get_person_by_email,
             create_calendar_event,
@@ -112,17 +113,19 @@ class AvailabilityOutput(BaseModel):
 
 class GoogleCalendarAvailabilityTool(StructuredTool):
     """
-    Fetch busy/free calendar blocks for a list of attendees from the database.
-    Stub for Google Calendar FreeBusy API.
+    Check availability for multiple users in Google Calendar.
+    Mock: returns randomized availability based on the day.
     """
 
     name: str = "google_calendar_availability"
     description: str = (
-        "Fetch free/busy calendar status for attendees within a given time window."
+        "Check when a set of users is free to meet. Returns a list of 'busy' blocks."
     )
     args_schema: type[BaseModel] = AvailabilityInput
 
-    def execute(self, inp: AvailabilityInput) -> AvailabilityOutput:
+    def execute(
+        self, inp: AvailabilityInput, config: Optional[RunnableConfig] = None
+    ) -> AvailabilityOutput:
         from integrations.data_warehouse.meeting_db import (
             get_person_by_email,
             get_busy_blocks,

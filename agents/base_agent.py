@@ -14,6 +14,7 @@ from langchain_core.runnables import RunnableConfig
 from human_loop.manager import HITLManager
 from llm.model_factory import ModelFactory
 from config.settings import Settings
+from orchestrator.schemas import AgentOutput
 
 
 class AgentInputError(Exception):
@@ -74,9 +75,9 @@ class BaseAgent(ABC):
         return None
 
     @property
-    def output_schema(self) -> Optional[Type[BaseModel]]:
-        """Pydantic model for validating output. Override in subclass."""
-        return None
+    def output_schema(self) -> Type[BaseModel]:
+        """Pydantic model for validating output. Defaults to standard AgentOutput."""
+        return AgentOutput
 
     def validate_input(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """Validate input data against the agent's input schema."""

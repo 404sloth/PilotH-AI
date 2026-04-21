@@ -26,6 +26,9 @@ class VendorRiskAssessmentInput(BaseModel):
     assessment_scope: str = Field("comprehensive", description="quick, financial, operational, or comprehensive")
 
 
+from langchain_core.runnables import RunnableConfig
+
+
 class VendorRiskAssessmentTool(StructuredTool):
     """Assess vendor financial and operational risks."""
     
@@ -33,7 +36,11 @@ class VendorRiskAssessmentTool(StructuredTool):
     description: str = "Comprehensive risk assessment including financial, operational, and compliance factors"
     args_schema: type[BaseModel] = VendorRiskAssessmentInput
     
-    def execute(self, validated_input: VendorRiskAssessmentInput) -> Dict[str, Any]:
+    def execute(
+        self,
+        validated_input: VendorRiskAssessmentInput,
+        config: Optional[RunnableConfig] = None,
+    ) -> Dict[str, Any]:
         """Execute risk assessment."""
         try:
             assessment = {

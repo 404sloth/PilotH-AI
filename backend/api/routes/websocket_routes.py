@@ -66,7 +66,7 @@ async def websocket_endpoint(
                 if message_type == "query":
                     from backend.api.dependencies import get_settings
                     from orchestrator.controller import OrchestratorController
-                    import asyncio
+                    from orchestrator.schemas import TraceEvent, OrchestratorResponse
 
                     prompt = (data.get("message") or "").strip()
                     if not prompt:
@@ -76,34 +76,37 @@ async def websocket_endpoint(
                     thread_id = data.get("thread_id") or session_id
                     agent_hint = data.get("agent_hint")
                     controller = OrchestratorController(get_settings())
-                    result = await asyncio.to_thread(
-                        controller.handle,
-                        message=prompt,
-                        session_id=thread_id,
-                        context={
-                            "conversation_id": thread_id,
-                            "user_message_metadata": (
-                                {"agent_hint": agent_hint} if agent_hint else {}
-                            ),
-                        }
-                        if thread_id
-                        else {"user_message_metadata": {"agent_hint": agent_hint}}
-                        if agent_hint
-                        else {},
-                        agent_hint=agent_hint,
-                    )
-                    await websocket.send_json(
-                        {
-                            "status": "SUCCESS",
-                            "message": result.get("response", ""),
-                            "thread_id": result.get("conversation_id") or thread_id,
-                            "session_id": result.get("session_id"),
-                            "agent": result.get("metadata", {}).get("agent"),
-                            "action": result.get("metadata", {}).get("action"),
-                            "data": result.get("data", {}),
-                            "metadata": result.get("metadata", {}),
-                        }
-                    )
+                    
+                    try:
+                        async for update in controller.handle_stream(
+                            message=prompt,
+                            session_id=thread_id,
+                            context={
+                                "conversation_id": thread_id,
+                                "user_message_metadata": ({"agent_hint": agent_hint} if agent_hint else {}),
+                            },
+                        ):
+                            if isinstance(update, TraceEvent):
+                                await websocket.send_json({
+                                    "status": "TRACE",
+                                    "type": "trace_update",
+                                    "step": update.model_dump()
+                                })
+                            elif isinstance(update, OrchestratorResponse):
+                                await websocket.send_json({
+                                    "status": "SUCCESS",
+                                    "message": update.response,
+                                    "thread_id": thread_id,
+                                    "agent": update.agent,
+                                    "action": update.action,
+                                    "thought": update.thought,
+                                    "data": update.data,
+                                    "suggestions": update.suggestions,
+                                    "metadata": update.metadata,
+                                })
+                    except Exception as e:
+                        logger.exception("Streaming error")
+                        await websocket.send_json({"status": "ERROR", "message": str(e)})
                     continue
 
                 if message_type in {"approve", "deny"}:

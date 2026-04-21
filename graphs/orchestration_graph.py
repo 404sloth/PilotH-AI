@@ -41,20 +41,20 @@ class OrchestrationState(TypedDict, total=False):
     user_message: str
     context: Dict[str, Any]
 
-    # Routing
-    intent: Dict[str, Any]  # {agent, action, params}
-    next_agent: str
-    dispatched_agents: List[str]  # for fan-out tracking
-
+    # Planning
+    intent: Dict[str, Any]  # The primary intent
+    plan: List[Dict[str, Any]]  # Sequential list of agent tasks
+    task_index: int  # Current task being executed
+    
     # Execution
     agent_results: Dict[str, Any]  # name → result
-    pending_tasks: List[str]  # for parallel completion check
+    dispatched_agents: List[str]  # for history tracking
     retry_count: int
     iteration: int
+    
+    # Risk & Quality
     quality_score: float
     quality_threshold: float
-
-    # Risk & HITL
     risk_score: float
     risk_level: str
     risk_items: List[str]
@@ -66,67 +66,99 @@ class OrchestrationState(TypedDict, total=False):
     final_response: str
     error: Optional[str]
     messages: List[Any]
+    trace: List[Dict[str, Any]] # Cumulative trace for the UI
 
 
 # ─── Nodes ────────────────────────────────────────────────────────────────────
 
 
 def parse_intent_node(state: OrchestrationState) -> Dict[str, Any]:
-    """Parse user message and determine target agent + action."""
+    """Parse user message and determine initial execution plan."""
     from orchestrator.intent_parser import IntentParser
     from config.settings import Settings
 
     try:
-        intent = IntentParser(Settings()).parse(
+        settings = Settings()
+        result = IntentParser(settings).parse(
             state.get("user_message", ""),
-            state.get("context", {}),
+            context=state.get("context", {}),
+            conversation_history=state.get("messages", []),
         )
+        plan = result.get("plan", [])
+        intent_reasoning = result.get("reasoning", "No overhead reasoning provided.")
     except Exception as e:
-        logger.warning("Intent parsing failed: %s", e)
-        intent = {
+        logger.warning("Strategic Planning failed: %s", e)
+        plan = [{
             "agent": "vendor_management",
             "action": "full_assessment",
-            "params": {},
-        }
+            "params": {"query": state.get("user_message")},
+            "reasoning": "Fallback plan due to planner failure."
+        }]
+        intent_reasoning = "Fallback due to planning error."
+
     return {
-        "intent": intent,
-        "next_agent": intent.get("agent", "vendor_management"),
+        "intent": {"reasoning": intent_reasoning},
+        "plan": plan,
+        "task_index": 0,
         "retry_count": 0,
         "iteration": 0,
-        "messages": [AIMessage(content=f"Intent parsed: {intent}")],
+        "dispatched_agents": [],
+        "agent_results": {},
+        "messages": [AIMessage(content=f"Strategic plan finalized: {len(plan)} tasks identified.\nReasoning: {intent_reasoning}")],
     }
 
 
 def dispatch_to_agent_node(state: OrchestrationState) -> Dict[str, Any]:
-    """Dispatch task to the appropriate agent subgraph and capture result."""
+    """Execute the current task in the multi-step plan."""
     from backend.services.agent_registry import get_agent
 
-    agent_name = state.get("next_agent", "vendor_management")
-    intent = state.get("intent", {})
+    plan = state.get("plan", [])
+    idx = state.get("task_index", 0)
+
+    if idx >= len(plan):
+        return {"error": "Execution index out of bounds for current plan."}
+
+    task = plan[idx]
+    agent_name = task["agent"]
     agent = get_agent(agent_name)
 
     if not agent:
         return {
-            "error": f"Agent '{agent_name}' not registered.",
+            "error": f"Agent '{agent_name}' not registered in the ecosystem.",
             "retry_count": state.get("retry_count", 0) + 1,
         }
 
     try:
+        # Build payload with parameters and cross-agent context
         payload = {
-            "action": intent.get("action", ""),
+            "action": task.get("action", ""),
             "session_id": state.get("session_id"),
-            **intent.get("params", {}),
+            **task.get("params", {}),
         }
+        
+        # AGENT-TO-AGENT: Share results from previous steps in the chain
+        payload["context_history"] = state.get("agent_results", {})
+        payload["step_reasoning"] = task.get("reasoning", "")
+
+        logger.info("Dispatching task %d/%d to agent '%s'", idx+1, len(plan), agent_name)
         result = agent.execute(payload)
+        
         current_results = dict(state.get("agent_results") or {})
-        current_results[agent_name] = result
+        # Store result by index or agent name (index is safer for multi-call same agent)
+        current_results[f"step_{idx}_{agent_name}"] = result
+        
+        dispatched = list(state.get("dispatched_agents") or [])
+        dispatched.append(agent_name)
+
         return {
             "agent_results": current_results,
-            "error": result.get("error"),
+            "dispatched_agents": dispatched,
+            "task_index": idx + 1,
+            "error": result.get("error") if isinstance(result, dict) else None,
             "retry_count": 0,
         }
     except Exception as e:
-        logger.exception("Agent '%s' execution failed", agent_name)
+        logger.exception("Task #%d execution failed for agent '%s'", idx, agent_name)
         return {
             "error": str(e),
             "retry_count": state.get("retry_count", 0) + 1,
@@ -210,16 +242,30 @@ def refine_output_node(state: OrchestrationState) -> Dict[str, Any]:
 
 
 def compile_response_node(state: OrchestrationState) -> Dict[str, Any]:
-    """Aggregate all agent results into a single final response."""
+    """Aggregate all agent results into a single final strategic response."""
     results = state.get("agent_results") or {}
     parts = []
-    for agent_name, result in results.items():
-        if isinstance(result, dict):
-            msg = result.get("summary") or result.get("message") or ""
-            if msg:
-                parts.append(f"[{agent_name.replace('_', ' ').title()}]\n{msg}")
+    
+    # Sort results by step index to maintain logical flow in the response
+    sorted_steps = sorted(results.items(), key=lambda x: x[0])
 
-    response = "\n\n".join(parts) if parts else "Workflow completed."
+    for key, result in sorted_steps:
+        if isinstance(result, dict):
+            # Extract agent name from key (step_N_agentname)
+            try:
+                display_name = key.split("_", 2)[2].replace("_", " ").title()
+            except IndexError:
+                display_name = "Agent Step"
+
+            msg = result.get("llm_summary") or result.get("summary") or result.get("message") or ""
+            if msg:
+                parts.append(f"## {display_name}\n{msg}")
+
+    if not parts:
+        response = "The requested workflow was completed, but no specific summaries were generated by the agents."
+    else:
+        response = "\n\n---\n\n".join(parts)
+
     return {
         "final_response": response,
         "messages": [AIMessage(content=response)],
@@ -300,55 +346,98 @@ def build_orchestration_graph(
     builder.add_edge(START, "parse_intent")
     builder.add_edge("parse_intent", "dispatch_to_agent")
 
-    # ── Retry loop after dispatch ────────────────────────────────────────────
-    # continue_or_retry returns "retry" | "continue" | "abort"
+def route_tasks(state: OrchestrationState) -> str:
+    """Decide if we should run more tasks, retry, or fail."""
+    plan = state.get("plan", [])
+    idx = state.get("task_index", 0)
+    error = state.get("error")
+    retry_count = state.get("retry_count", 0)
+    
+    if error:
+        if retry_count < 3:
+            return "retry"
+        else:
+            logger.error("Max retries exceeded for task index %d", idx)
+            return "fail"
+    
+    if idx < len(plan):
+        return "continue_task"
+    
+    return "done"
+
+
+# ─── Graph Builder ─────────────────────────────────────────────────────────────
+
+
+def build_orchestration_graph(
+    use_checkpointer: bool = False,
+    quality_threshold: float = 0.80,
+) -> Any:
+    """
+    Build the top-level orchestration graph.
+    """
+    builder = StateGraph(OrchestrationState)
+
+    # ── Register nodes ──────────────────────────────────────────────────────
+    builder.add_node("parse_intent", parse_intent_node)
+    builder.add_node("dispatch_to_agent", dispatch_to_agent_node)
+    builder.add_node("retry", retry_node)
+    builder.add_node("assess_risk", assess_risk_node)
+    builder.add_node("hitl_interrupt", hitl_interrupt_node)
+    builder.add_node("escalate", escalate_node)
+    builder.add_node("refine_output", refine_output_node)
+    builder.add_node("compile_response", compile_response_node)
+    builder.add_node("error_response", error_response_node)
+    builder.add_node("human_rejected", human_rejected_node)
+
+    # ── Workflow ────────────────────────────────────────────────────────────
+    builder.add_edge(START, "parse_intent")
+    builder.add_edge("parse_intent", "dispatch_to_agent")
+
     builder.add_conditional_edges(
         "dispatch_to_agent",
-        lambda s: continue_or_retry(s, max_retries=3),
+        route_tasks,
         {
-            "continue": "assess_risk",
+            "continue_task": "dispatch_to_agent",
             "retry": "retry",
-            "abort": "error_response",
-        },
+            "fail": "error_response",
+            "done": "assess_risk",
+        }
     )
-    builder.add_edge("retry", "dispatch_to_agent")  # loop back
+    
+    builder.add_edge("retry", "dispatch_to_agent")
 
-    # ── Risk routing after assessment ─────────────────────────────────────
     builder.add_conditional_edges(
         "assess_risk",
         route_by_risk,
         {
             "risk_high": "hitl_interrupt",
-            "risk_medium": "refine_output",  # medium risk → refine first
+            "risk_medium": "refine_output",
             "risk_none": "refine_output",
         },
     )
 
-    # ── HITL gate ─────────────────────────────────────────────────────────
     builder.add_conditional_edges(
         "hitl_interrupt",
         hitl_gate,
         {
-            "needs_human": "hitl_interrupt",  # graph pauses here (NodeInterrupt)
-            "auto_approve": "escalate",  # log it but continue
+            "needs_human": "hitl_interrupt",
+            "auto_approve": "escalate",
             "rejected": "human_rejected",
         },
     )
     builder.add_edge("escalate", "refine_output")
     builder.add_edge("human_rejected", END)
 
-    # ── Iterative refinement loop ─────────────────────────────────────────
-    # should_loop returns "loop" | "done"
     builder.add_conditional_edges(
         "refine_output",
-        lambda s: should_loop(s, max_iterations=3),
+        lambda s: should_loop(s, max_iterations=2),
         {
-            "loop": "refine_output",  # repeat the node
+            "loop": "refine_output",
             "done": "compile_response",
         },
     )
 
-    # ── Terminal edges ─────────────────────────────────────────────────────
     builder.add_edge("compile_response", END)
     builder.add_edge("error_response", END)
 

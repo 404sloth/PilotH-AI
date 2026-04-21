@@ -20,6 +20,9 @@ class DynamicSQLInput(BaseModel):
         description="The user's data request in natural language (e.g., 'What are the top 5 vendors by quality score in the UK?')"
     )
 
+from langchain_core.runnables import RunnableConfig
+
+
 class DynamicSQLExecutorTool(StructuredTool):
     name: str = "dynamic_sql_executor"
     description: str = (
@@ -29,7 +32,11 @@ class DynamicSQLExecutorTool(StructuredTool):
     )
     args_schema: Type[BaseModel] = DynamicSQLInput
 
-    def execute(self, validated_input: DynamicSQLInput) -> Dict[str, Any]:
+    def execute(
+        self,
+        validated_input: DynamicSQLInput,
+        config: Optional[RunnableConfig] = None,
+    ) -> Dict[str, Any]:
         """
         1. Generates SQL from natural language using internal LLM.
         2. Validates SQL (only SELECT).
@@ -42,27 +49,41 @@ class DynamicSQLExecutorTool(StructuredTool):
         nl_query = validated_input.natural_language_query
         schema_min = get_minified_schema()
         schema_summary = get_schema_summary()
+        relationships = get_db_relationships()
 
-        system_prompt = f"""You are a Text-to-SQL engine for PilotH.
-SCHEMA:
+        system_prompt = f"""You are an Expert Text-to-SQL engine for the PilotH Enterprise Platform.
+Your goal is to translate natural language requests into precise, optimized SQLite queries.
+
+DATABASES SCHEMA (minified):
 {schema_min}
 
-SUMMARY:
+RELATIONSHIPS (JOIN Guide):
+{relationships}
+
+STRATEGIC SUMMARY:
 {schema_summary}
 
-RULES:
-1. ONLY SELECT.
-2. FETCH ONLY NECESSARY COLUMNS.
-3. Use INNER/LEFT JOINs if needed.
-4. LIMIT 50 unless specified.
-5. Return ONLY SQL string. No markdown.
+SQL GENERATION RULES:
+1. ONLY generate SELECT statements.
+2. OPTIMIZATION: Fetch ONLY necessary columns to avoid data bloat.
+3. COMPLEXITY: Heavily use INNER/LEFT JOINs when cross-referencing tables (e.g., vendors + performance).
+4. FILTERING: Leverage complex WHERE clauses with AND/OR, LIKE, and range filters (e.g., quality_score > 90).
+5. AGGREGATIONS: Use SUM, AVG, COUNT when requesting statistics.
+6. LIMIT: Always LIMIT to 50 rows unless explicitly asked for more.
+7. FORMAT: Return ONLY the raw SQL string. No markdown, no triple backticks, no explanations.
+
+REASONING:
+Before generating the final SQL, think step-by-step about which tables contain the required data and how they link.
+Produce the SQL immediately after your internal reasoning.
 """
         
         try:
             llm = get_llm(temperature=0) # Deterministic for SQL
+            from integrations.data_warehouse.schema_provider import get_db_relationships
+            
             response = llm.invoke([
                 SystemMessage(content=system_prompt),
-                HumanMessage(content=f"Generate SQL for: {nl_query}")
+                HumanMessage(content=f"Request: {nl_query}\n\nThink about the JOINs and WHERE clauses, then provide the SQL.")
             ])
             
             sql = response.content.strip()
